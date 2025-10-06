@@ -13,42 +13,27 @@
       -webkit-app-region: drag;
     }
     .sidebar {
-      width: 70px;
-      height: 100%;
+      width: 56px;
+      height: 280px;
       background: rgba(0, 0, 0, 0.75);
       backdrop-filter: blur(20px) saturate(120%);
       -webkit-backdrop-filter: blur(20px) saturate(120%);
-      border: 1px solid rgba(0, 255, 65, 0.3);
-      border-radius: 14px;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 16px;
       box-shadow: 
         0 8px 32px rgba(0, 0, 0, 0.6),
-        inset 0 1px 0 rgba(0, 255, 65, 0.1),
-        0 0 20px rgba(0, 255, 65, 0.15);
+        inset 0 1px 0 rgba(255, 255, 255, 0.1),
+        0 0 30px rgba(255, 255, 255, 0.1);
       display: flex;
       flex-direction: column;
-      gap: 4px;
-      padding: 16px 0;
-    }
-    
-    .logo {
-      width: 100%;
-      height: 60px;
-      display: flex;
       align-items: center;
-      justify-content: center;
-      margin-bottom: 12px;
-    }
-    .logo-text {
-      font-size: 24px;
-      font-weight: bold;
-      color: #00ff41;
-      text-shadow: 0 0 10px #00ff41, 0 0 20px #00ff41;
-      letter-spacing: 2px;
+      padding: 12px 0;
+      gap: 4px;
     }
     
     .nav-item {
-      width: 100%;
-      height: 64px;
+      width: 40px;
+      height: 40px;
       display: flex;
       align-items: center;
       justify-content: center;
@@ -56,102 +41,137 @@
       position: relative;
       transition: all 0.2s;
       -webkit-app-region: no-drag;
+      border-radius: 8px;
     }
     .nav-item:hover {
-      background: rgba(0, 255, 65, 0.08);
+      background: rgba(255, 255, 255, 0.08);
     }
-    .nav-item.active::before {
-      content: '';
-      position: absolute;
-      left: 0;
-      width: 3px;
-      height: 40px;
-      background: #00ff41;
-      border-radius: 0 2px 2px 0;
-      box-shadow: 0 0 10px #00ff41;
+    .nav-item.active {
+      background: rgba(255, 255, 255, 0.12);
     }
-    
-    .nav-icon {
-      width: 44px;
-      height: 44px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      background: rgba(0, 255, 65, 0.06);
-      border: 1px solid rgba(0, 255, 65, 0.2);
-      border-radius: 10px;
-      position: relative;
-    }
-    .nav-icon svg {
-      width: 22px;
-      height: 22px;
-      stroke: #00ff41;
+    .nav-item svg {
+      width: 20px;
+      height: 20px;
+      stroke: #ffffff;
       stroke-width: 2;
-      filter: drop-shadow(0 0 3px #00ff41);
+      filter: drop-shadow(0 0 4px rgba(255, 255, 255, 0.5));
     }
     
     .badge {
       position: absolute;
-      top: -6px;
-      right: -6px;
-      background: #00ff41;
+      top: -4px;
+      right: -4px;
+      background: #ffffff;
       color: #000;
-      padding: 2px 6px;
+      padding: 2px 5px;
       border-radius: 8px;
-      font-size: 10px;
+      font-size: 9px;
       font-weight: bold;
-      min-width: 18px;
+      min-width: 16px;
       text-align: center;
-      border: 2px solid #000;
-      box-shadow: 0 0 8px #00ff41;
+      box-shadow: 0 0 8px rgba(255, 255, 255, 0.8);
+    }
+    
+    .mode-btn {
+      width: 40px;
+      height: 40px;
+      margin-top: auto;
+      position: relative;
+      cursor: pointer;
+      -webkit-app-region: no-drag;
+      border-radius: 8px;
+      overflow: hidden;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+    }
+    .mode-btn::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: 
+        repeating-linear-gradient(
+          0deg,
+          rgba(255, 255, 255, 0.03) 0px,
+          rgba(255, 255, 255, 0.03) 1px,
+          transparent 1px,
+          transparent 2px
+        ),
+        repeating-linear-gradient(
+          90deg,
+          rgba(255, 255, 255, 0.03) 0px,
+          rgba(255, 255, 255, 0.03) 1px,
+          transparent 1px,
+          transparent 2px
+        );
+      animation: noise 0.2s infinite;
+      pointer-events: none;
+    }
+    @keyframes noise {
+      0%, 100% { transform: translate(0, 0); }
+      10% { transform: translate(-1px, -1px); }
+      20% { transform: translate(1px, 1px); }
+      30% { transform: translate(-1px, 1px); }
+      40% { transform: translate(1px, -1px); }
+      50% { transform: translate(-2px, 0); }
+      60% { transform: translate(2px, 0); }
+      70% { transform: translate(0, -2px); }
+      80% { transform: translate(0, 2px); }
+      90% { transform: translate(1px, 0); }
+    }
+    .mode-btn svg {
+      position: relative;
+      z-index: 1;
+      width: 16px;
+      height: 16px;
+      stroke: #ffffff;
+      stroke-width: 2;
+    }
+    .mode-btn:hover {
+      border-color: #ffffff;
+      box-shadow: 0 0 12px rgba(255, 255, 255, 0.4);
     }
   </style>
 </head>
 <body>
   <div class="sidebar">
-    <div class="logo">
-      <div class="logo-text">G</div>
-    </div>
-    
     <div class="nav-item" onclick="openPanel('files')">
-      <div class="nav-icon">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
-          <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/>
-          <polyline points="13 2 13 9 20 9"/>
-        </svg>
-        <span class="badge" id="filesBadge">0</span>
-      </div>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+        <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/>
+        <polyline points="13 2 13 9 20 9"/>
+      </svg>
+      <span class="badge" id="filesBadge">0</span>
     </div>
     
     <div class="nav-item" onclick="openPanel('tasks')">
-      <div class="nav-icon">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
-          <path d="M9 11l3 3L22 4"/>
-          <path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/>
-        </svg>
-        <span class="badge" id="tasksBadge">0</span>
-      </div>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+        <path d="M9 11l3 3L22 4"/>
+        <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
+      </svg>
+      <span class="badge" id="tasksBadge">0</span>
     </div>
     
     <div class="nav-item" onclick="openPanel('calendar')">
-      <div class="nav-icon">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
-          <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
-          <line x1="16" y1="2" x2="16" y2="6"/>
-          <line x1="8" y1="2" x2="8" y2="6"/>
-          <line x1="3" y1="10" x2="21" y2="10"/>
-        </svg>
-        <span class="badge" id="eventsBadge">0</span>
-      </div>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+        <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
+        <line x1="16" y1="2" x2="16" y2="6"/>
+        <line x1="8" y1="2" x2="8" y2="6"/>
+        <line x1="3" y1="10" x2="21" y2="10"/>
+      </svg>
+      <span class="badge" id="eventsBadge">0</span>
     </div>
     
     <div class="nav-item" onclick="openPanel('modes')">
-      <div class="nav-icon">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
-          <circle cx="12" cy="12" r="3"/>
-          <path d="M12 1v6m0 6v6"/>
-        </svg>
-      </div>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+        <circle cx="12" cy="12" r="3"/>
+        <path d="M12 1v6m0 6v6"/>
+      </svg>
+    </div>
+    
+    <div class="mode-btn" onclick="openModeSelector()" title="Switch Mode">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+        <circle cx="12" cy="12" r="1"/>
+        <circle cx="12" cy="5" r="1"/>
+        <circle cx="12" cy="19" r="1"/>
+      </svg>
     </div>
   </div>
   <script src="renderer-sidebar.js"></script>
