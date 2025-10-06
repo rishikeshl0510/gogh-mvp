@@ -69,7 +69,17 @@ let settings = loadSettings();
 function loadDatabase() {
   try {
     if (fs.existsSync(DB_PATH)) {
-      return JSON.parse(fs.readFileSync(DB_PATH, 'utf8'));
+      const data = JSON.parse(fs.readFileSync(DB_PATH, 'utf8'));
+      // Ensure all arrays exist
+      if (!data.apps) data.apps = [];
+      if (!data.files) data.files = [];
+      if (!data.bookmarks) data.bookmarks = [];
+      if (!data.tasks) data.tasks = [];
+      if (!data.events) data.events = [];
+      if (!data.connections) data.connections = [];
+      if (!data.modes) data.modes = [{ id: 'default', name: 'Work', color: '#ffffff' }];
+      if (!data.currentMode) data.currentMode = 'default';
+      return data;
     }
   } catch (e) {
     console.error('DB load error:', e);
@@ -146,13 +156,16 @@ async function searchWithGoogle(query) {
       }
     });
     
-    return response.data.items.map(item => ({
-      type: 'web',
-      title: item.title,
-      description: item.snippet,
-      url: item.link,
-      action: 'open_url'
-    }));
+    if (response.data.items) {
+      return response.data.items.map(item => ({
+        type: 'web',
+        title: item.title,
+        description: item.snippet,
+        url: item.link,
+        action: 'open_url'
+      }));
+    }
+    return [];
   } catch (error) {
     console.error('Google search error:', error.message);
     return [];
@@ -215,11 +228,15 @@ async function searchDirectory(dir, query, currentDepth, maxDepth) {
   return results;
 }
 
-// Search apps
+// Search apps - FIXED
 async function searchApps(query) {
+  if (!database || !database.apps || !Array.isArray(database.apps)) {
+    return [];
+  }
+  
   const lowerQuery = query.toLowerCase();
   const filteredApps = database.apps.filter(app => 
-    app.name.toLowerCase().includes(lowerQuery)
+    app && app.name && app.name.toLowerCase().includes(lowerQuery)
   );
   
   return filteredApps.map(app => ({
@@ -231,30 +248,13 @@ async function searchApps(query) {
   }));
 }
 
-// Combined search
-async function unifiedSearch(query) {
-  const [aiResults, googleResults, fileResults, appResults] = await Promise.all([
-    searchWithAI(query),
-    searchWithGoogle(query),
-    searchLocalFiles(query),
-    searchApps(query)
-  ]);
-  
-  return {
-    ai: aiResults,
-    web: googleResults,
-    files: fileResults,
-    apps: appResults
-  };
-}
-
 function createSidebar() {
   const { height } = screen.getPrimaryDisplay().workAreaSize;
   sidebarWindow = new BrowserWindow({
     width: 56,
-    height: 280,
+    height: 250,
     x: 20,
-    y: Math.round((height - 280) / 2),
+    y: Math.round((height - 250) / 2),
     frame: false,
     transparent: true,
     alwaysOnTop: true,
@@ -496,9 +496,19 @@ ipcMain.handle('open-settings', () => { createSettings(); return true; });
 ipcMain.handle('get-data', () => database);
 ipcMain.handle('get-settings', () => settings);
 
-// Unified search
-ipcMain.handle('unified-search', async (_, query) => {
-  return await unifiedSearch(query);
+// Separate search handlers
+ipcMain.handle('search-ai', async (_, query) => {
+  return await searchWithAI(query);
+});
+
+ipcMain.handle('search-google', async (_, query) => {
+  return await searchWithGoogle(query);
+});
+
+ipcMain.handle('search-local', async (_, query) => {
+  const fileResults = await searchLocalFiles(query);
+  const appResults = await searchApps(query);
+  return { files: fileResults, apps: appResults };
 });
 
 // Execute search result
