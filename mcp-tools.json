@@ -1,0 +1,7 @@
+[
+  { "app": "gmail", "action": "send_email", "icon": "📧", "title": "Send Email", "description": "Send email via Gmail", "params": ["to", "subject", "body"] },
+  { "app": "github", "action": "create_issue", "icon": "🐛", "title": "Create GitHub Issue", "description": "Create issue in repository", "params": ["repo", "title", "body"] },
+  { "app": "googlecalendar", "action": "create_event", "icon": "📅", "title": "Create Calendar Event", "description": "Add event to calendar", "params": ["summary", "start", "end"] },
+  { "app": "slack", "action": "send_message", "icon": "💬", "title": "Send Slack Message", "description": "Send to channel", "params": ["channel", "text"] },
+  { "app": "notion", "action": "create_page", "icon": "📝", "title": "Create Notion Page", "description": "Create new page", "params": ["title", "content"] }
+]
