@@ -17,10 +17,9 @@
       height: 100%;
       background: rgba(0, 0, 0, 0.85);
       backdrop-filter: blur(20px) saturate(120%);
-      -webkit-backdrop-filter: blur(20px) saturate(120%);
       border: 1px solid rgba(255, 255, 255, 0.2);
       border-radius: 14px;
-      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6), 0 0 30px rgba(255, 255, 255, 0.1);
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
       display: flex;
       flex-direction: column;
       overflow: hidden;
@@ -29,6 +28,9 @@
       padding: 20px 24px;
       border-bottom: 1px solid rgba(255, 255, 255, 0.2);
       background: rgba(0, 0, 0, 0.3);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
     }
     .title {
       font-size: 16px;
@@ -38,6 +40,44 @@
       text-transform: uppercase;
     }
     .title::before { content: '> '; opacity: 0.7; }
+    
+    .mode-indicator {
+      font-size: 11px;
+      padding: 4px 12px;
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 12px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .mode-indicator:hover {
+      background: rgba(255, 255, 255, 0.15);
+    }
+    
+    .tabs {
+      display: flex;
+      gap: 8px;
+      padding: 12px 24px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+      background: rgba(0, 0, 0, 0.2);
+    }
+    .tab {
+      padding: 6px 14px;
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      border-radius: 6px;
+      font-size: 11px;
+      cursor: pointer;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      transition: all 0.2s;
+    }
+    .tab:hover { background: rgba(255, 255, 255, 0.1); }
+    .tab.active {
+      background: #ffffff;
+      color: #000;
+      box-shadow: 0 0 10px rgba(255, 255, 255, 0.3);
+    }
+    
     .content {
       flex: 1;
       overflow-y: auto;
@@ -45,6 +85,34 @@
     }
     .content::-webkit-scrollbar { width: 6px; }
     .content::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.2); border-radius: 3px; }
+    
+    .drop-zone {
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 10px;
+      padding: 20px;
+      text-align: center;
+      color: rgba(255, 255, 255, 0.5);
+      margin-bottom: 20px;
+      cursor: pointer;
+      transition: all 0.3s;
+      background: rgba(255, 255, 255, 0.02);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      font-size: 12px;
+    }
+    .drop-zone:hover, .drop-zone.drag-over {
+      border-color: #ffffff;
+      background: rgba(255, 255, 255, 0.05);
+      color: #ffffff;
+    }
+    .drop-zone svg {
+      width: 16px;
+      height: 16px;
+      stroke: currentColor;
+      stroke-width: 2;
+    }
     
     .quick-add {
       display: flex;
@@ -61,7 +129,6 @@
       font-size: 13px;
       font-family: 'Courier New', monospace;
       outline: none;
-      transition: all 0.2s;
     }
     .input:focus {
       background: rgba(255, 255, 255, 0.08);
@@ -69,6 +136,7 @@
       box-shadow: 0 0 10px rgba(255, 255, 255, 0.2);
     }
     .input::placeholder { color: rgba(255, 255, 255, 0.4); }
+    
     .btn {
       padding: 12px 20px;
       background: #ffffff;
@@ -89,124 +157,6 @@
       transform: translateY(-1px);
     }
     
-    /* GRAPH-STYLE TASK VIEW */
-    .task-graph {
-      display: flex;
-      flex-direction: column;
-      gap: 2px;
-      position: relative;
-    }
-    .task-graph::before {
-      content: '';
-      position: absolute;
-      left: 19px;
-      top: 0;
-      bottom: 0;
-      width: 2px;
-      background: linear-gradient(to bottom, rgba(255,255,255,0.2), transparent);
-    }
-    .task-node {
-      display: flex;
-      align-items: flex-start;
-      gap: 12px;
-      padding: 14px 16px;
-      position: relative;
-    }
-    .task-node::before {
-      content: '';
-      position: absolute;
-      left: 12px;
-      top: 50%;
-      width: 16px;
-      height: 2px;
-      background: rgba(255, 255, 255, 0.2);
-    }
-    .task-point {
-      width: 8px;
-      height: 8px;
-      border: 2px solid #ffffff;
-      border-radius: 50%;
-      background: rgba(0, 0, 0, 0.9);
-      flex-shrink: 0;
-      margin-top: 5px;
-      z-index: 1;
-      position: relative;
-      box-shadow: 0 0 8px rgba(255, 255, 255, 0.5);
-    }
-    .task-point.completed {
-      background: #ffffff;
-      box-shadow: 0 0 12px rgba(255, 255, 255, 0.8);
-    }
-    .task-body {
-      flex: 1;
-      padding: 8px 12px;
-      background: rgba(255, 255, 255, 0.04);
-      border: 1px solid rgba(255, 255, 255, 0.15);
-      border-radius: 6px;
-      cursor: pointer;
-      transition: all 0.2s;
-    }
-    .task-body:hover {
-      background: rgba(255, 255, 255, 0.08);
-      border-color: rgba(255, 255, 255, 0.3);
-    }
-    .task-node.completed .task-body {
-      opacity: 0.5;
-    }
-    .task-title {
-      font-size: 13px;
-      line-height: 1.4;
-      margin-bottom: 4px;
-    }
-    .task-node.completed .task-title {
-      text-decoration: line-through;
-    }
-    .task-meta {
-      font-size: 10px;
-      opacity: 0.5;
-      letter-spacing: 0.5px;
-    }
-    .task-actions {
-      display: flex;
-      gap: 4px;
-      opacity: 0;
-      transition: opacity 0.2s;
-    }
-    .task-body:hover .task-actions {
-      opacity: 1;
-    }
-    .task-action-btn {
-      width: 20px;
-      height: 20px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      background: rgba(255, 0, 0, 0.1);
-      border: 1px solid rgba(255, 0, 0, 0.3);
-      border-radius: 3px;
-      cursor: pointer;
-      color: #ff4444;
-      font-size: 12px;
-    }
-    
-    .drop-zone {
-      border: 2px dashed rgba(255, 255, 255, 0.3);
-      border-radius: 10px;
-      padding: 40px;
-      text-align: center;
-      color: rgba(255, 255, 255, 0.5);
-      margin-bottom: 20px;
-      cursor: pointer;
-      transition: all 0.3s;
-      font-size: 13px;
-      letter-spacing: 0.5px;
-    }
-    .drop-zone:hover, .drop-zone.drag-over {
-      border-color: #ffffff;
-      background: rgba(255, 255, 255, 0.05);
-      box-shadow: 0 0 20px rgba(255, 255, 255, 0.15);
-    }
-    
     .file-item {
       display: flex;
       align-items: center;
@@ -223,19 +173,49 @@
       background: rgba(255, 255, 255, 0.08);
       transform: translateX(2px);
     }
+    .file-icon {
+      font-size: 18px;
+    }
+    .file-info {
+      flex: 1;
+      min-width: 0;
+    }
+    .file-name {
+      font-size: 12px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .file-delete {
+      width: 24px;
+      height: 24px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(255, 0, 0, 0.1);
+      border: 1px solid rgba(255, 0, 0, 0.3);
+      border-radius: 4px;
+      cursor: pointer;
+      color: #ff4444;
+      font-size: 14px;
+    }
+    
     .empty {
       padding: 60px 20px;
       text-align: center;
       color: rgba(255, 255, 255, 0.3);
       font-size: 13px;
     }
+    .hidden { display: none !important; }
   </style>
 </head>
 <body>
   <div class="panel">
     <div class="header">
       <div class="title" id="panelTitle">Panel</div>
+      <div class="mode-indicator" id="modeIndicator" onclick="openModeSelector()">Work</div>
     </div>
+    <div id="tabsContainer" class="tabs hidden"></div>
     <div class="content" id="panelContent"></div>
   </div>
   <script src="renderer-panel.js"></script>

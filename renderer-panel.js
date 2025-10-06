@@ -1,5 +1,6 @@
 let data = null;
 let currentSection = null;
+let currentTab = 'files';
 
 async function init() {
   data = await window.panelAPI.getData();
@@ -16,22 +17,62 @@ async function init() {
 
 function render() {
   document.getElementById('panelTitle').textContent = currentSection.toUpperCase();
+  
+  // Update mode indicator
+  const currentMode = data.modes.find(m => m.id === data.currentMode);
+  document.getElementById('modeIndicator').textContent = currentMode ? currentMode.name : 'Work';
+  
   const content = document.getElementById('panelContent');
-  if (currentSection === 'files') renderFiles(content);
-  else if (currentSection === 'tasks') renderTasks(content);
-  else if (currentSection === 'calendar') renderCalendar(content);
-  else if (currentSection === 'modes') renderModesPanel(content);
+  
+  if (currentSection === 'files') {
+    renderFilesSection();
+  } else if (currentSection === 'tasks') {
+    renderTasks(content);
+  }
+}
+
+function openModeSelector() {
+  window.panelAPI.openModeSelector();
+}
+
+function renderFilesSection() {
+  const tabsContainer = document.getElementById('tabsContainer');
+  tabsContainer.classList.remove('hidden');
+  tabsContainer.innerHTML = `
+    <div class="tab ${currentTab === 'files' ? 'active' : ''}" onclick="switchTab('files')">Files</div>
+    <div class="tab ${currentTab === 'bookmarks' ? 'active' : ''}" onclick="switchTab('bookmarks')">Bookmarks</div>
+    <div class="tab ${currentTab === 'apps' ? 'active' : ''}" onclick="switchTab('apps')">Apps</div>
+  `;
+  
+  const content = document.getElementById('panelContent');
+  if (currentTab === 'files') renderFiles(content);
+  else if (currentTab === 'bookmarks') renderBookmarks(content);
+  else if (currentTab === 'apps') renderApps(content);
+}
+
+function switchTab(tab) {
+  currentTab = tab;
+  renderFilesSection();
 }
 
 function renderFiles(content) {
   const filtered = data.files.filter(f => f.mode === data.currentMode);
   content.innerHTML = `
-    <div class="drop-zone" id="drop">[ DROP FILES HERE ]</div>
+    <div class="drop-zone" id="drop">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+        <path d="M21 10c0-1.1-.9-2-2-2h-6.5l-2-2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V10z"/>
+        <line x1="12" y1="13" x2="12" y2="19"/>
+        <line x1="9" y1="16" x2="15" y2="16"/>
+      </svg>
+      Drop here
+    </div>
     <div>${filtered.length ? filtered.map(f => `
-      <div class="file-item" onclick="openFile('${f.path}')">
-        <span>📄</span>
-        <span style="flex:1">${f.name}</span>
-        <span onclick="event.stopPropagation();removeFile('${f.id}')" style="cursor:pointer;opacity:0.5">×</span>
+      <div class="file-item" onclick="openFile('${f.path.replace(/\\/g, '\\\\')}')">
+        <span class="file-icon">📄</span>
+        <div class="file-info">
+          <div class="file-name">${f.name}</div>
+        </div>
+        <div class="file-delete" onclick="event.stopPropagation();removeFile('${f.id}')">×</div>
       </div>
     `).join('') : '<div class="empty">NO FILES</div>'}</div>
     <button class="btn" onclick="addFiles()">+ ADD FILES</button>
@@ -39,118 +80,186 @@ function renderFiles(content) {
   setupDrop();
 }
 
+function renderBookmarks(content) {
+  const filtered = data.bookmarks.filter(b => b.mode === data.currentMode);
+  content.innerHTML = `
+    <div class="quick-add">
+      <input type="text" id="bookmarkUrl" class="input" placeholder="URL (https://...)">
+      <button class="btn" onclick="addBookmark()">+</button>
+    </div>
+    <div>${filtered.length ? filtered.map(b => `
+      <div class="file-item" onclick="openBookmark('${b.url}')">
+        <span class="file-icon">🔖</span>
+        <div class="file-info">
+          <div class="file-name">${b.name || b.url}</div>
+        </div>
+        <div class="file-delete" onclick="event.stopPropagation();removeBookmark('${b.id}')">×</div>
+      </div>
+    `).join('') : '<div class="empty">NO BOOKMARKS</div>'}</div>
+  `;
+}
+
+function renderApps(content) {
+  const filtered = data.apps.filter(a => a.mode === data.currentMode);
+  content.innerHTML = `
+    <button class="btn" onclick="addApp()" style="margin-bottom:20px">+ ADD APP</button>
+    <div>${filtered.length ? filtered.map(a => `
+      <div class="file-item" onclick="launchApp('${a.path.replace(/\\/g, '\\\\')}')">
+        <span class="file-icon">⚡</span>
+        <div class="file-info">
+          <div class="file-name">${a.name}</div>
+        </div>
+        <div class="file-delete" onclick="event.stopPropagation();removeApp('${a.id}')">×</div>
+      </div>
+    `).join('') : '<div class="empty">NO APPS</div>'}</div>
+  `;
+}
+
 function renderTasks(content) {
+  document.getElementById('tabsContainer').classList.add('hidden');
   const filtered = data.tasks.filter(t => t.mode === data.currentMode);
   const active = filtered.filter(t => !t.completed);
   const completed = filtered.filter(t => t.completed);
   
   content.innerHTML = `
     <div class="quick-add">
-      <input type="text" id="taskIn" class="input" placeholder="New task... (Enter to add)">
+      <input type="text" id="taskIn" class="input" placeholder="New task... (press Enter)">
       <button class="btn" onclick="addTask()">+</button>
     </div>
-    <div class="task-graph">
-      ${active.length ? active.map(t => `
-        <div class="task-node">
-          <div class="task-point" onclick="toggleTask('${t.id}')"></div>
-          <div class="task-body">
-            <div class="task-title">${t.title}</div>
-            <div style="display:flex;justify-content:space-between;align-items:center">
-              <div class="task-meta">${new Date(t.date).toLocaleString()}</div>
-              <div class="task-actions">
-                <div class="task-action-btn" onclick="deleteTask('${t.id}')">×</div>
-              </div>
-            </div>
-          </div>
-        </div>
-      `).join('') : '<div class="empty">NO TASKS</div>'}
-      ${completed.map(t => `
-        <div class="task-node completed">
-          <div class="task-point completed" onclick="toggleTask('${t.id}')"></div>
-          <div class="task-body">
-            <div class="task-title">${t.title}</div>
-            <div style="display:flex;justify-content:space-between;align-items:center">
-              <div class="task-meta">${new Date(t.date).toLocaleString()}</div>
-              <div class="task-actions">
-                <div class="task-action-btn" onclick="deleteTask('${t.id}')">×</div>
-              </div>
-            </div>
-          </div>
-        </div>
-      `).join('')}
-    </div>
+    <div>${active.length ? active.map(t => `
+      <div class="file-item">
+        <span onclick="toggleTask('${t.id}')" style="cursor:pointer;font-size:20px">☐</span>
+        <div class="file-info"><div class="file-name">${t.title}</div></div>
+        <div class="file-delete" onclick="deleteTask('${t.id}')">×</div>
+      </div>
+    `).join('') : '<div class="empty">NO TASKS</div>'}</div>
+    ${completed.map(t => `
+      <div class="file-item" style="opacity:0.5">
+        <span onclick="toggleTask('${t.id}')" style="cursor:pointer;font-size:20px">☑</span>
+        <div class="file-info"><div class="file-name" style="text-decoration:line-through">${t.title}</div></div>
+        <div class="file-delete" onclick="deleteTask('${t.id}')">×</div>
+      </div>
+    `).join('')}
   `;
   
   const input = document.getElementById('taskIn');
-  input.focus();
-  input.addEventListener('keypress', (e) => { if (e.key === 'Enter') addTask(); });
-}
-
-function renderCalendar(content) {
-  const filtered = data.events.filter(e => e.mode === data.currentMode);
-  content.innerHTML = `
-    <input type="text" id="evTitle" class="input" placeholder="Event..." style="margin-bottom:8px">
-    <input type="datetime-local" id="evTime" class="input" style="margin-bottom:12px">
-    <button class="btn" onclick="addEvent()">+ ADD EVENT</button>
-    <div style="margin-top:20px">${filtered.length ? filtered.map(e => `
-      <div class="file-item">
-        <span>📅</span>
-        <div style="flex:1">
-          <div>${e.title}</div>
-          <div style="font-size:10px;opacity:0.5;margin-top:2px">${new Date(e.time).toLocaleString()}</div>
-        </div>
-      </div>
-    `).join('') : '<div class="empty">NO EVENTS</div>'}</div>
-  `;
-}
-
-function renderModesPanel(content) {
-  content.innerHTML = `
-    <input type="text" id="modeName" class="input" placeholder="Mode name..." style="margin-bottom:12px">
-    <button class="btn" onclick="addMode()">+ CREATE MODE</button>
-    <div style="margin-top:20px">${data.modes.map(m => `
-      <div class="file-item"><span>🎨</span><span>${m.name}</span></div>
-    `).join('')}</div>
-  `;
+  if (input) {
+    input.focus();
+    input.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') addTask();
+    });
+  }
 }
 
 function setupDrop() {
   const zone = document.getElementById('drop');
-  zone.addEventListener('dragover', (e) => { e.preventDefault(); zone.classList.add('drag-over'); });
+  if (!zone) return;
+  zone.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    zone.classList.add('drag-over');
+  });
   zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
   zone.addEventListener('drop', async (e) => {
     e.preventDefault();
     zone.classList.remove('drag-over');
     for (const file of Array.from(e.dataTransfer.files)) {
-      await window.panelAPI.addFile({ id: Date.now() + Math.random(), name: file.name, path: file.path, size: file.size, mode: data.currentMode, date: new Date().toISOString() });
+      await window.panelAPI.addFile({
+        id: Date.now() + Math.random(),
+        name: file.name,
+        path: file.path,
+        mode: data.currentMode,
+        date: new Date().toISOString()
+      });
     }
   });
 }
 
 async function addFiles() {
   const paths = await window.panelAPI.selectFiles();
-  for (const p of paths) await window.panelAPI.addFile({ id: Date.now() + Math.random(), name: p.split(/[\\\/]/).pop(), path: p, size: 0, mode: data.currentMode, date: new Date().toISOString() });
+  for (const p of paths) {
+    await window.panelAPI.addFile({
+      id: Date.now() + Math.random(),
+      name: p.split(/[\\\/]/).pop(),
+      path: p,
+      mode: data.currentMode,
+      date: new Date().toISOString()
+    });
+  }
 }
 
-async function openFile(path) { await window.panelAPI.openFile(path); }
-async function removeFile(id) { await window.panelAPI.removeFile(id); }
+async function openFile(filePath) {
+  if (!filePath || filePath === 'undefined') {
+    alert('File path is missing');
+    return;
+  }
+  await window.panelAPI.openFile(filePath);
+}
+
+async function removeFile(id) {
+  await window.panelAPI.removeFile(id);
+}
+
+async function addBookmark() {
+  const urlInput = document.getElementById('bookmarkUrl');
+  const url = urlInput.value.trim();
+  if (!url) return;
+  await window.panelAPI.addBookmark({
+    id: Date.now(),
+    name: url,
+    url: url,
+    mode: data.currentMode,
+    date: new Date().toISOString()
+  });
+  urlInput.value = '';
+}
+
+async function openBookmark(url) {
+  await window.panelAPI.openBookmark(url);
+}
+
+async function removeBookmark(id) {
+  await window.panelAPI.removeBookmark(id);
+}
+
+async function addApp() {
+  const paths = await window.panelAPI.selectFiles();
+  if (paths.length > 0) {
+    await window.panelAPI.addApp({
+      id: Date.now(),
+      name: paths[0].split(/[\\\/]/).pop(),
+      path: paths[0],
+      mode: data.currentMode
+    });
+  }
+}
+
+async function launchApp(appPath) {
+  await window.panelAPI.launchApp(appPath);
+}
+
+async function removeApp(id) {
+  await window.panelAPI.removeApp(id);
+}
+
 async function addTask() {
   const inp = document.getElementById('taskIn');
-  if (!inp.value.trim()) return;
-  await window.panelAPI.addTask({ id: Date.now(), title: inp.value, mode: data.currentMode, completed: false, date: new Date().toISOString() });
+  if (!inp || !inp.value.trim()) return;
+  await window.panelAPI.addTask({
+    id: Date.now(),
+    title: inp.value,
+    mode: data.currentMode,
+    completed: false,
+    date: new Date().toISOString()
+  });
+  inp.value = '';
 }
-async function toggleTask(id) { await window.panelAPI.toggleTask(id); }
-async function deleteTask(id) { await window.panelAPI.deleteTask(id); }
-async function addEvent() {
-  const title = document.getElementById('evTitle');
-  const time = document.getElementById('evTime');
-  if (!title.value.trim() || !time.value) return;
-  await window.panelAPI.addEvent({ id: Date.now(), title: title.value, time: time.value, mode: data.currentMode });
+
+async function toggleTask(id) {
+  await window.panelAPI.toggleTask(id);
 }
-async function addMode() {
-  const name = document.getElementById('modeName');
-  if (!name.value.trim()) return;
-  await window.panelAPI.addMode({ id: 'mode_' + Date.now(), name: name.value, color: '#ffffff' });
+
+async function deleteTask(id) {
+  await window.panelAPI.deleteTask(id);
 }
 
 init();

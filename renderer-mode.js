@@ -16,9 +16,17 @@ function render() {
     </div>
   `).join('');
 }
-async function switchMode(id) { await window.modeAPI.switchMode(id); }
+async function switchMode(id) {
+  await window.modeAPI.switchMode(id);
+}
 async function addMode() {
   const name = prompt('Mode name:');
-  if (name) await window.modeAPI.addMode({ id: 'mode_' + Date.now(), name, color: '#ffffff' });
+  if (name) {
+    await window.modeAPI.addMode({
+      id: 'mode_' + Date.now(),
+      name: name,
+      color: '#ffffff'
+    });
+  }
 }
 init();

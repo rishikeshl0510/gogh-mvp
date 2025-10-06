@@ -7,12 +7,21 @@ async function init() {
     updateBadges();
   });
 }
-function openPanel(section) { window.sidebarAPI.openPanel(section); }
-function openModeSelector() { window.sidebarAPI.openModeSelector(); }
+function openPanel(section) {
+  window.sidebarAPI.openPanel(section);
+}
+function openGraphView() {
+  window.sidebarAPI.openGraphView();
+}
+function openSettings() {
+  window.sidebarAPI.openSettings();
+}
 function updateBadges() {
   const m = data.currentMode;
-  document.getElementById('filesBadge').textContent = data.files.filter(f => f.mode === m).length;
+  const totalFiles = data.files.filter(f => f.mode === m).length + 
+                     data.bookmarks.filter(b => b.mode === m).length + 
+                     data.apps.filter(a => a.mode === m).length;
+  document.getElementById('filesBadge').textContent = totalFiles;
   document.getElementById('tasksBadge').textContent = data.tasks.filter(t => t.mode === m && !t.completed).length;
-  document.getElementById('eventsBadge').textContent = data.events.filter(e => e.mode === m).length;
 }
 init();
