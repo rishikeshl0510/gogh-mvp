@@ -14,7 +14,6 @@ contextBridge.exposeInMainWorld('panelAPI', {
   addTask: (task) => ipcRenderer.invoke('add-task', task),
   toggleTask: (id) => ipcRenderer.invoke('toggle-task', id),
   deleteTask: (id) => ipcRenderer.invoke('delete-task', id),
-  addEvent: (evt) => ipcRenderer.invoke('add-event', evt),
   switchMode: (id) => ipcRenderer.invoke('switch-mode', id),
   openModeSelector: () => ipcRenderer.invoke('open-mode-selector'),
   onSetPanel: (callback) => ipcRenderer.on('set-panel', (_, section) => callback(section)),

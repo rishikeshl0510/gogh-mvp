@@ -1,8 +1,10 @@
 const input = document.getElementById('input');
-const list = document.getElementById('list');
+const resultsContainer = document.getElementById('results');
 const loading = document.getElementById('loading');
-let results = [];
-let selected = -1;
+
+let allResults = { ai: [], web: [], files: [], apps: [] };
+let selectedIndex = -1;
+let allItems = [];
 let searchTimer = null;
 
 input.focus();
@@ -11,19 +13,17 @@ input.addEventListener('input', async (e) => {
   const query = e.target.value.trim();
   
   if (!query) {
-    list.classList.add('hidden');
+    resultsContainer.classList.add('hidden');
     loading.classList.add('hidden');
     return;
   }
   
-  // Show loading
-  list.classList.add('hidden');
+  resultsContainer.classList.add('hidden');
   loading.classList.remove('hidden');
   
-  // Debounce search
   clearTimeout(searchTimer);
   searchTimer = setTimeout(async () => {
-    results = await window.commandAPI.searchLocal(query);
+    allResults = await window.commandAPI.unifiedSearch(query);
     showResults();
   }, 300);
 });
@@ -37,7 +37,7 @@ input.addEventListener('keydown', (e) => {
     selectPrev();
   } else if (e.key === 'Enter') {
     e.preventDefault();
-    execute();
+    executeSelected();
   } else if (e.key === 'Escape') {
     window.commandAPI.hide();
   }
@@ -46,62 +46,105 @@ input.addEventListener('keydown', (e) => {
 function showResults() {
   loading.classList.add('hidden');
   
-  if (!results.length) {
-    list.classList.add('hidden');
-    return;
+  allItems = [];
+  let html = '';
+  
+  // AI Results
+  if (allResults.ai && allResults.ai.length > 0) {
+    html += '<div class="category"><div class="category-title">AI Response</div>';
+    allResults.ai.forEach(item => {
+      html += createItem(item, '🤖');
+      allItems.push(item);
+    });
+    html += '</div>';
   }
   
-  list.innerHTML = '';
-  results.forEach((result, i) => {
-    const item = document.createElement('div');
-    item.className = 'item';
-    item.innerHTML = `
-      <div class="item-icon">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
-          ${result.isDirectory ? 
-            '<path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>' :
-            '<path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/>'
-          }
-        </svg>
-      </div>
-      <div class="item-content">
-        <div class="item-title">${result.name}</div>
-        <div class="item-desc">${result.path}</div>
-      </div>
-    `;
-    item.onclick = () => {
-      selected = i;
-      execute();
-    };
-    list.appendChild(item);
-  });
+  // Web Results
+  if (allResults.web && allResults.web.length > 0) {
+    html += '<div class="category"><div class="category-title">Web Results</div>';
+    allResults.web.forEach(item => {
+      html += createItem(item, '🌐');
+      allItems.push(item);
+    });
+    html += '</div>';
+  }
   
-  list.classList.remove('hidden');
-  selected = 0;
-  updateSelection();
+  // File Results
+  if (allResults.files && allResults.files.length > 0) {
+    html += '<div class="category"><div class="category-title">Files</div>';
+    allResults.files.forEach(item => {
+      const icon = item.type === 'folder' ? '📁' : '📄';
+      html += createItem(item, icon);
+      allItems.push(item);
+    });
+    html += '</div>';
+  }
+  
+  // App Results
+  if (allResults.apps && allResults.apps.length > 0) {
+    html += '<div class="category"><div class="category-title">Apps</div>';
+    allResults.apps.forEach(item => {
+      html += createItem(item, '⚡');
+      allItems.push(item);
+    });
+    html += '</div>';
+  }
+  
+  if (html) {
+    resultsContainer.innerHTML = html;
+    resultsContainer.classList.remove('hidden');
+    selectedIndex = 0;
+    updateSelection();
+    
+    // Add click handlers
+    document.querySelectorAll('.item').forEach((el, i) => {
+      el.onclick = () => {
+        selectedIndex = i;
+        executeSelected();
+      };
+    });
+  } else {
+    resultsContainer.innerHTML = '<div class="empty" style="padding:40px;text-align:center;color:rgba(255,255,255,0.3)">No results found</div>';
+    resultsContainer.classList.remove('hidden');
+  }
+}
+
+function createItem(item, icon) {
+  return `
+    <div class="item">
+      <div class="item-icon">${icon}</div>
+      <div class="item-content">
+        <div class="item-title">${item.title}</div>
+        <div class="item-desc">${item.description || ''}</div>
+      </div>
+    </div>
+  `;
 }
 
 function selectNext() {
-  if (!results.length) return;
-  selected = (selected + 1) % results.length;
+  if (allItems.length === 0) return;
+  selectedIndex = (selectedIndex + 1) % allItems.length;
   updateSelection();
 }
 
 function selectPrev() {
-  if (!results.length) return;
-  selected = selected <= 0 ? results.length - 1 : selected - 1;
+  if (allItems.length === 0) return;
+  selectedIndex = selectedIndex <= 0 ? allItems.length - 1 : selectedIndex - 1;
   updateSelection();
 }
 
 function updateSelection() {
   document.querySelectorAll('.item').forEach((el, i) => {
-    el.classList.toggle('selected', i === selected);
+    el.classList.toggle('selected', i === selectedIndex);
+    if (i === selectedIndex) {
+      el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    }
   });
 }
 
-async function execute() {
-  if (selected >= 0 && results[selected]) {
-    await window.commandAPI.openFile(results[selected].path);
+async function executeSelected() {
+  if (selectedIndex >= 0 && allItems[selectedIndex]) {
+    await window.commandAPI.executeResult(allItems[selectedIndex]);
     window.commandAPI.hide();
   }
 }

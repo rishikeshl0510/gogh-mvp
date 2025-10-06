@@ -1,12 +1,15 @@
 let data = null;
+
 async function init() {
   data = await window.modeAPI.getData();
   render();
+  
   window.modeAPI.onDataUpdated(async () => {
     data = await window.modeAPI.getData();
     render();
   });
 }
+
 function render() {
   const list = document.getElementById('modeList');
   list.innerHTML = data.modes.map(m => `
@@ -16,17 +19,21 @@ function render() {
     </div>
   `).join('');
 }
+
 async function switchMode(id) {
   await window.modeAPI.switchMode(id);
+  window.close();
 }
+
 async function addMode() {
   const name = prompt('Mode name:');
-  if (name) {
+  if (name && name.trim()) {
     await window.modeAPI.addMode({
       id: 'mode_' + Date.now(),
-      name: name,
+      name: name.trim(),
       color: '#ffffff'
     });
   }
 }
+
 init();

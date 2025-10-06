@@ -4,11 +4,13 @@ let currentTab = 'files';
 
 async function init() {
   data = await window.panelAPI.getData();
+  
   window.panelAPI.onSetPanel(async (section) => {
     currentSection = section;
     data = await window.panelAPI.getData();
     render();
   });
+  
   window.panelAPI.onDataUpdated(async () => {
     data = await window.panelAPI.getData();
     render();
@@ -18,7 +20,6 @@ async function init() {
 function render() {
   document.getElementById('panelTitle').textContent = currentSection.toUpperCase();
   
-  // Update mode indicator
   const currentMode = data.modes.find(m => m.id === data.currentMode);
   document.getElementById('modeIndicator').textContent = currentMode ? currentMode.name : 'Work';
   
@@ -64,7 +65,7 @@ function renderFiles(content) {
         <line x1="12" y1="13" x2="12" y2="19"/>
         <line x1="9" y1="16" x2="15" y2="16"/>
       </svg>
-      Drop here
+      Drop files here
     </div>
     <div>${filtered.length ? filtered.map(f => `
       <div class="file-item" onclick="openFile('${f.path.replace(/\\/g, '\\\\')}')">
@@ -84,8 +85,8 @@ function renderBookmarks(content) {
   const filtered = data.bookmarks.filter(b => b.mode === data.currentMode);
   content.innerHTML = `
     <div class="quick-add">
-      <input type="text" id="bookmarkUrl" class="input" placeholder="URL (https://...)">
-      <button class="btn" onclick="addBookmark()">+</button>
+      <input type="text" id="bookmarkUrl" class="input" placeholder="Paste URL (https://...)">
+      <button class="btn" onclick="addBookmark()">+ ADD</button>
     </div>
     <div>${filtered.length ? filtered.map(b => `
       <div class="file-item" onclick="openBookmark('${b.url}')">
@@ -123,45 +124,61 @@ function renderTasks(content) {
   
   content.innerHTML = `
     <div class="quick-add">
-      <input type="text" id="taskIn" class="input" placeholder="New task... (press Enter)">
-      <button class="btn" onclick="addTask()">+</button>
-    </div>
-    <div>${active.length ? active.map(t => `
-      <div class="file-item">
-        <span onclick="toggleTask('${t.id}')" style="cursor:pointer;font-size:20px">☐</span>
-        <div class="file-info"><div class="file-name">${t.title}</div></div>
-        <div class="file-delete" onclick="deleteTask('${t.id}')">×</div>
+      <input type="text" id="taskTitle" class="input" placeholder="Task title...">
+      <div class="input-row">
+        <input type="datetime-local" id="taskStart" class="input input-small" placeholder="Start">
+        <input type="datetime-local" id="taskEnd" class="input input-small" placeholder="End">
+        <button class="btn" onclick="addTask()">+ ADD</button>
       </div>
-    `).join('') : '<div class="empty">NO TASKS</div>'}</div>
+    </div>
+    <div>${active.length ? active.map(t => {
+      const now = new Date();
+      const end = new Date(t.endDate);
+      const daysLeft = Math.ceil((end - now) / (1000 * 60 * 60 * 24));
+      const dueDateText = daysLeft > 0 ? `${daysLeft}d left` : daysLeft === 0 ? 'Today' : 'Overdue';
+      
+      return `
+        <div class="file-item">
+          <span onclick="toggleTask('${t.id}')" style="cursor:pointer;font-size:20px">☐</span>
+          <div class="file-info">
+            <div class="file-name">${t.title}</div>
+            <div class="file-meta">${new Date(t.startDate).toLocaleDateString()} - ${new Date(t.endDate).toLocaleDateString()} • ${dueDateText}</div>
+          </div>
+          <div class="file-delete" onclick="deleteTask('${t.id}')">×</div>
+        </div>
+      `;
+    }).join('') : '<div class="empty">NO ACTIVE TASKS</div>'}</div>
+    ${completed.length ? '<div style="margin-top:20px;padding-top:20px;border-top:1px solid rgba(255,255,255,0.2)"></div>' : ''}
     ${completed.map(t => `
       <div class="file-item" style="opacity:0.5">
         <span onclick="toggleTask('${t.id}')" style="cursor:pointer;font-size:20px">☑</span>
-        <div class="file-info"><div class="file-name" style="text-decoration:line-through">${t.title}</div></div>
+        <div class="file-info">
+          <div class="file-name" style="text-decoration:line-through">${t.title}</div>
+          <div class="file-meta">Completed ${new Date(t.completedAt).toLocaleDateString()}</div>
+        </div>
         <div class="file-delete" onclick="deleteTask('${t.id}')">×</div>
       </div>
     `).join('')}
   `;
-  
-  const input = document.getElementById('taskIn');
-  if (input) {
-    input.focus();
-    input.addEventListener('keypress', (e) => {
-      if (e.key === 'Enter') addTask();
-    });
-  }
 }
 
 function setupDrop() {
   const zone = document.getElementById('drop');
   if (!zone) return;
+  
   zone.addEventListener('dragover', (e) => {
     e.preventDefault();
     zone.classList.add('drag-over');
   });
-  zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
+  
+  zone.addEventListener('dragleave', () => {
+    zone.classList.remove('drag-over');
+  });
+  
   zone.addEventListener('drop', async (e) => {
     e.preventDefault();
     zone.classList.remove('drag-over');
+    
     for (const file of Array.from(e.dataTransfer.files)) {
       await window.panelAPI.addFile({
         id: Date.now() + Math.random(),
@@ -203,6 +220,7 @@ async function addBookmark() {
   const urlInput = document.getElementById('bookmarkUrl');
   const url = urlInput.value.trim();
   if (!url) return;
+  
   await window.panelAPI.addBookmark({
     id: Date.now(),
     name: url,
@@ -242,16 +260,28 @@ async function removeApp(id) {
 }
 
 async function addTask() {
-  const inp = document.getElementById('taskIn');
-  if (!inp || !inp.value.trim()) return;
+  const titleInput = document.getElementById('taskTitle');
+  const startInput = document.getElementById('taskStart');
+  const endInput = document.getElementById('taskEnd');
+  
+  if (!titleInput.value.trim() || !startInput.value || !endInput.value) {
+    alert('Please fill all fields');
+    return;
+  }
+  
   await window.panelAPI.addTask({
     id: Date.now(),
-    title: inp.value,
+    title: titleInput.value,
+    startDate: startInput.value,
+    endDate: endInput.value,
     mode: data.currentMode,
     completed: false,
-    date: new Date().toISOString()
+    createdAt: new Date().toISOString()
   });
-  inp.value = '';
+  
+  titleInput.value = '';
+  startInput.value = '';
+  endInput.value = '';
 }
 
 async function toggleTask(id) {

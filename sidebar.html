@@ -14,7 +14,7 @@
     }
     .sidebar {
       width: 56px;
-      height: 230px;
+      height: 280px;
       background: rgba(0, 0, 0, 0.75);
       backdrop-filter: blur(20px) saturate(120%);
       -webkit-backdrop-filter: blur(20px) saturate(120%);
@@ -61,6 +61,12 @@
       text-align: center;
       box-shadow: 0 0 8px rgba(255, 255, 255, 0.8);
     }
+    .divider {
+      width: 30px;
+      height: 1px;
+      background: rgba(255, 255, 255, 0.2);
+      margin: 4px 0;
+    }
     .settings-btn {
       width: 40px;
       height: 40px;
@@ -102,7 +108,7 @@
       <span class="badge" id="tasksBadge">0</span>
     </div>
     
-    <div class="nav-item" onclick="openGraphView()" title="Graph View">
+    <div class="nav-item" onclick="openGraphView()" title="Knowledge Graph">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
         <circle cx="12" cy="12" r="2"/>
         <circle cx="12" cy="5" r="2"/>
@@ -111,6 +117,15 @@
         <line x1="12" y1="7" x2="12" y2="10"/>
         <line x1="14" y1="12" x2="17" y2="12"/>
         <line x1="7" y1="12" x2="10" y2="12"/>
+      </svg>
+    </div>
+    
+    <div class="divider"></div>
+    
+    <div class="nav-item" onclick="openModeSelector()" title="Switch Mode">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+        <circle cx="12" cy="12" r="3"/>
+        <path d="M12 1v6m0 6v6M1 12h6m6 0h6"/>
       </svg>
     </div>
     

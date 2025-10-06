@@ -1,37 +1,11 @@
 const fs = require('fs');
-const path = require('path');
 
-console.log('🔧 Creating COMPLETE Gogh System with AI...\n');
+console.log('🔧 Fixing all issues...\n');
 
 const files = {};
 
 // ============================================
-// .ENV
-// ============================================
-files['.env'] = `GEMINI_API_KEY=your_gemini_api_key_here
-COMPOSIO_API_KEY=your_composio_api_key_here
-GOOGLE_SEARCH_API_KEY=your_google_api_key_here
-GOOGLE_SEARCH_ENGINE_ID=your_search_engine_id_here`;
-
-// ============================================
-// PACKAGE.JSON
-// ============================================
-files['package.json'] = `{
-  "name": "gogh",
-  "version": "1.0.0",
-  "main": "main.js",
-  "scripts": {
-    "start": "electron ."
-  },
-  "dependencies": {
-    "electron": "^33.0.0",
-    "dotenv": "^16.4.5",
-    "axios": "^1.6.0"
-  }
-}`;
-
-// ============================================
-// MAIN.JS - COMPLETE
+// FIXED MAIN.JS
 // ============================================
 files['main.js'] = `const { app, BrowserWindow, globalShortcut, screen, ipcMain, Menu, dialog, shell } = require('electron');
 const path = require('path');
@@ -104,7 +78,17 @@ let settings = loadSettings();
 function loadDatabase() {
   try {
     if (fs.existsSync(DB_PATH)) {
-      return JSON.parse(fs.readFileSync(DB_PATH, 'utf8'));
+      const data = JSON.parse(fs.readFileSync(DB_PATH, 'utf8'));
+      // Ensure all arrays exist
+      if (!data.apps) data.apps = [];
+      if (!data.files) data.files = [];
+      if (!data.bookmarks) data.bookmarks = [];
+      if (!data.tasks) data.tasks = [];
+      if (!data.events) data.events = [];
+      if (!data.connections) data.connections = [];
+      if (!data.modes) data.modes = [{ id: 'default', name: 'Work', color: '#ffffff' }];
+      if (!data.currentMode) data.currentMode = 'default';
+      return data;
     }
   } catch (e) {
     console.error('DB load error:', e);
@@ -181,13 +165,16 @@ async function searchWithGoogle(query) {
       }
     });
     
-    return response.data.items.map(item => ({
-      type: 'web',
-      title: item.title,
-      description: item.snippet,
-      url: item.link,
-      action: 'open_url'
-    }));
+    if (response.data.items) {
+      return response.data.items.map(item => ({
+        type: 'web',
+        title: item.title,
+        description: item.snippet,
+        url: item.link,
+        action: 'open_url'
+      }));
+    }
+    return [];
   } catch (error) {
     console.error('Google search error:', error.message);
     return [];
@@ -250,11 +237,15 @@ async function searchDirectory(dir, query, currentDepth, maxDepth) {
   return results;
 }
 
-// Search apps
+// Search apps - FIXED
 async function searchApps(query) {
+  if (!database || !database.apps || !Array.isArray(database.apps)) {
+    return [];
+  }
+  
   const lowerQuery = query.toLowerCase();
   const filteredApps = database.apps.filter(app => 
-    app.name.toLowerCase().includes(lowerQuery)
+    app && app.name && app.name.toLowerCase().includes(lowerQuery)
   );
   
   return filteredApps.map(app => ({
@@ -266,30 +257,13 @@ async function searchApps(query) {
   }));
 }
 
-// Combined search
-async function unifiedSearch(query) {
-  const [aiResults, googleResults, fileResults, appResults] = await Promise.all([
-    searchWithAI(query),
-    searchWithGoogle(query),
-    searchLocalFiles(query),
-    searchApps(query)
-  ]);
-  
-  return {
-    ai: aiResults,
-    web: googleResults,
-    files: fileResults,
-    apps: appResults
-  };
-}
-
 function createSidebar() {
   const { height } = screen.getPrimaryDisplay().workAreaSize;
   sidebarWindow = new BrowserWindow({
     width: 56,
-    height: 280,
+    height: 250,
     x: 20,
-    y: Math.round((height - 280) / 2),
+    y: Math.round((height - 250) / 2),
     frame: false,
     transparent: true,
     alwaysOnTop: true,
@@ -531,9 +505,19 @@ ipcMain.handle('open-settings', () => { createSettings(); return true; });
 ipcMain.handle('get-data', () => database);
 ipcMain.handle('get-settings', () => settings);
 
-// Unified search
-ipcMain.handle('unified-search', async (_, query) => {
-  return await unifiedSearch(query);
+// Separate search handlers
+ipcMain.handle('search-ai', async (_, query) => {
+  return await searchWithAI(query);
+});
+
+ipcMain.handle('search-google', async (_, query) => {
+  return await searchWithGoogle(query);
+});
+
+ipcMain.handle('search-local', async (_, query) => {
+  const fileResults = await searchLocalFiles(query);
+  const appResults = await searchApps(query);
+  return { files: fileResults, apps: appResults };
 });
 
 // Execute search result
@@ -717,7 +701,7 @@ ipcMain.handle('hide-command', () => {
 });
 `;
 
-// SIDEBAR.HTML
+// FIXED SIDEBAR.HTML - Reduced spacing
 files['sidebar.html'] = `<!DOCTYPE html>
 <html>
 <head>
@@ -734,7 +718,7 @@ files['sidebar.html'] = `<!DOCTYPE html>
     }
     .sidebar {
       width: 56px;
-      height: 280px;
+      height: 250px;
       background: rgba(0, 0, 0, 0.75);
       backdrop-filter: blur(20px) saturate(120%);
       -webkit-backdrop-filter: blur(20px) saturate(120%);
@@ -745,7 +729,7 @@ files['sidebar.html'] = `<!DOCTYPE html>
       flex-direction: column;
       align-items: center;
       padding: 12px 0;
-      gap: 4px;
+      gap: 2px;
     }
     .nav-item {
       width: 40px;
@@ -785,12 +769,11 @@ files['sidebar.html'] = `<!DOCTYPE html>
       width: 30px;
       height: 1px;
       background: rgba(255, 255, 255, 0.2);
-      margin: 4px 0;
+      margin: 2px 0;
     }
     .settings-btn {
       width: 40px;
       height: 40px;
-      margin-top: auto;
       cursor: pointer;
       -webkit-app-region: no-drag;
       border-radius: 8px;
@@ -860,12 +843,12 @@ files['sidebar.html'] = `<!DOCTYPE html>
 </body>
 </html>`;
 
-// COMMAND.HTML with categorized results
+// FIXED COMMAND HTML - Separate search categories
 files['command.html'] = `<!DOCTYPE html>
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>Command Palette</title>
+  <title>Command</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
@@ -911,25 +894,39 @@ files['command.html'] = `<!DOCTYPE html>
     }
     input::placeholder { color: rgba(255, 255, 255, 0.4); }
     
+    .search-tabs {
+      display: flex;
+      padding: 12px 24px;
+      gap: 8px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+      -webkit-app-region: no-drag;
+    }
+    .search-tab {
+      padding: 6px 14px;
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      border-radius: 6px;
+      font-size: 11px;
+      cursor: pointer;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      transition: all 0.2s;
+    }
+    .search-tab:hover { background: rgba(255, 255, 255, 0.1); }
+    .search-tab.active {
+      background: #ffffff;
+      color: #000;
+      box-shadow: 0 0 10px rgba(255, 255, 255, 0.3);
+    }
+    
     .results-container {
-      max-height: 450px;
+      max-height: 400px;
       overflow-y: auto;
       padding: 8px;
     }
     .results-container::-webkit-scrollbar { width: 6px; }
     .results-container::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.2); }
     
-    .category {
-      margin-bottom: 16px;
-    }
-    .category-title {
-      font-size: 11px;
-      text-transform: uppercase;
-      letter-spacing: 1px;
-      opacity: 0.5;
-      padding: 8px 12px;
-      color: #ffffff;
-    }
     .item {
       display: flex;
       align-items: center;
@@ -956,12 +953,6 @@ files['command.html'] = `<!DOCTYPE html>
       justify-content: center;
       flex-shrink: 0;
       font-size: 18px;
-    }
-    .item-icon svg {
-      width: 20px;
-      height: 20px;
-      stroke: #ffffff;
-      stroke-width: 2;
     }
     .item-content {
       flex: 1;
@@ -996,7 +987,12 @@ files['command.html'] = `<!DOCTYPE html>
   <div class="palette">
     <div class="input-wrap">
       <span class="prompt">></span>
-      <input id="input" placeholder="search AI, web, files, apps..." autocomplete="off">
+      <input id="input" placeholder="search..." autocomplete="off">
+    </div>
+    <div class="search-tabs">
+      <div class="search-tab active" data-type="local" onclick="switchSearchType('local')">Local</div>
+      <div class="search-tab" data-type="ai" onclick="switchSearchType('ai')">AI</div>
+      <div class="search-tab" data-type="google" onclick="switchSearchType('google')">Google</div>
     </div>
     <div id="results" class="results-container hidden"></div>
     <div id="loading" class="loading hidden">Searching...</div>
@@ -1005,970 +1001,40 @@ files['command.html'] = `<!DOCTYPE html>
 </body>
 </html>`;
 
-// Continue in next message due to length...
-console.log('Writing files part 1...');
-Object.entries(files).forEach(([filename, content]) => {
-  fs.writeFileSync(filename, content);
-  console.log(`✓ ${filename}`);
-});
-
-console.log('\n⏳ Creating remaining files...');
-// PANEL.HTML with tabs and task duration
-files['panel.html'] = `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="UTF-8">
-  <title>Panel</title>
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body {
-      font-family: 'Courier New', monospace;
-      background: transparent;
-      overflow: hidden;
-      height: 100vh;
-      color: #ffffff;
-    }
-    .panel {
-      width: 100%;
-      height: 100%;
-      background: rgba(0, 0, 0, 0.85);
-      backdrop-filter: blur(20px) saturate(120%);
-      border: 1px solid rgba(255, 255, 255, 0.2);
-      border-radius: 14px;
-      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
-      display: flex;
-      flex-direction: column;
-      overflow: hidden;
-    }
-    .header {
-      padding: 20px 24px;
-      border-bottom: 1px solid rgba(255, 255, 255, 0.2);
-      background: rgba(0, 0, 0, 0.3);
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-    }
-    .title {
-      font-size: 16px;
-      font-weight: bold;
-      text-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
-      letter-spacing: 1px;
-      text-transform: uppercase;
-    }
-    .title::before { content: '> '; opacity: 0.7; }
-    .mode-indicator {
-      font-size: 11px;
-      padding: 4px 12px;
-      background: rgba(255, 255, 255, 0.1);
-      border-radius: 12px;
-      cursor: pointer;
-      transition: all 0.2s;
-    }
-    .mode-indicator:hover { background: rgba(255, 255, 255, 0.15); }
-    
-    .tabs {
-      display: flex;
-      gap: 8px;
-      padding: 12px 24px;
-      border-bottom: 1px solid rgba(255, 255, 255, 0.2);
-      background: rgba(0, 0, 0, 0.2);
-    }
-    .tab {
-      padding: 6px 14px;
-      background: rgba(255, 255, 255, 0.06);
-      border: 1px solid rgba(255, 255, 255, 0.15);
-      border-radius: 6px;
-      font-size: 11px;
-      cursor: pointer;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-      transition: all 0.2s;
-    }
-    .tab:hover { background: rgba(255, 255, 255, 0.1); }
-    .tab.active {
-      background: #ffffff;
-      color: #000;
-      box-shadow: 0 0 10px rgba(255, 255, 255, 0.3);
-    }
-    
-    .content {
-      flex: 1;
-      overflow-y: auto;
-      padding: 20px 24px;
-    }
-    .content::-webkit-scrollbar { width: 6px; }
-    .content::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.2); border-radius: 3px; }
-    
-    .drop-zone {
-      border: 1px solid rgba(255, 255, 255, 0.2);
-      border-radius: 10px;
-      padding: 20px;
-      text-align: center;
-      color: rgba(255, 255, 255, 0.5);
-      margin-bottom: 20px;
-      cursor: pointer;
-      transition: all 0.3s;
-      background: rgba(255, 255, 255, 0.02);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 8px;
-      font-size: 12px;
-    }
-    .drop-zone:hover, .drop-zone.drag-over {
-      border-color: #ffffff;
-      background: rgba(255, 255, 255, 0.05);
-      color: #ffffff;
-    }
-    .drop-zone svg {
-      width: 16px;
-      height: 16px;
-      stroke: currentColor;
-      stroke-width: 2;
-    }
-    
-    .quick-add {
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-      margin-bottom: 20px;
-    }
-    .input-row {
-      display: flex;
-      gap: 8px;
-    }
-    .input {
-      flex: 1;
-      padding: 12px 14px;
-      background: rgba(255, 255, 255, 0.04);
-      border: 1px solid rgba(255, 255, 255, 0.2);
-      border-radius: 8px;
-      color: #ffffff;
-      font-size: 13px;
-      font-family: 'Courier New', monospace;
-      outline: none;
-    }
-    .input:focus {
-      background: rgba(255, 255, 255, 0.08);
-      border-color: #ffffff;
-      box-shadow: 0 0 10px rgba(255, 255, 255, 0.2);
-    }
-    .input::placeholder { color: rgba(255, 255, 255, 0.4); }
-    .input-small {
-      width: 150px;
-    }
-    
-    .btn {
-      padding: 12px 20px;
-      background: #ffffff;
-      border: none;
-      border-radius: 8px;
-      color: #000;
-      font-size: 13px;
-      font-weight: bold;
-      font-family: 'Courier New', monospace;
-      cursor: pointer;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-      transition: all 0.2s;
-      box-shadow: 0 0 10px rgba(255, 255, 255, 0.3);
-    }
-    .btn:hover {
-      box-shadow: 0 0 20px rgba(255, 255, 255, 0.6);
-      transform: translateY(-1px);
-    }
-    
-    .file-item {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      padding: 12px 14px;
-      background: rgba(255, 255, 255, 0.04);
-      border: 1px solid rgba(255, 255, 255, 0.15);
-      border-radius: 8px;
-      margin-bottom: 8px;
-      cursor: pointer;
-      transition: all 0.2s;
-    }
-    .file-item:hover {
-      background: rgba(255, 255, 255, 0.08);
-      transform: translateX(2px);
-    }
-    .file-icon {
-      font-size: 18px;
-    }
-    .file-info {
-      flex: 1;
-      min-width: 0;
-    }
-    .file-name {
-      font-size: 12px;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-    .file-meta {
-      font-size: 10px;
-      opacity: 0.5;
-      margin-top: 2px;
-    }
-    .file-delete {
-      width: 24px;
-      height: 24px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      background: rgba(255, 0, 0, 0.1);
-      border: 1px solid rgba(255, 0, 0, 0.3);
-      border-radius: 4px;
-      cursor: pointer;
-      color: #ff4444;
-      font-size: 14px;
-    }
-    
-    .empty {
-      padding: 60px 20px;
-      text-align: center;
-      color: rgba(255, 255, 255, 0.3);
-      font-size: 13px;
-    }
-    .hidden { display: none !important; }
-  </style>
-</head>
-<body>
-  <div class="panel">
-    <div class="header">
-      <div class="title" id="panelTitle">Panel</div>
-      <div class="mode-indicator" id="modeIndicator" onclick="openModeSelector()">Work</div>
-    </div>
-    <div id="tabsContainer" class="tabs hidden"></div>
-    <div class="content" id="panelContent"></div>
-  </div>
-  <script src="renderer-panel.js"></script>
-</body>
-</html>`;
-
-// MODE.HTML
-files['mode.html'] = `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="UTF-8">
-  <title>Modes</title>
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body {
-      font-family: 'Courier New', monospace;
-      background: transparent;
-      overflow: hidden;
-      height: 100vh;
-      color: #ffffff;
-    }
-    .mode-selector {
-      width: 100%;
-      height: 100%;
-      background: rgba(0, 0, 0, 0.85);
-      backdrop-filter: blur(20px) saturate(120%);
-      border: 1px solid rgba(255, 255, 255, 0.2);
-      border-radius: 14px;
-      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
-      padding: 16px;
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-    }
-    .mode-title {
-      font-size: 11px;
-      text-transform: uppercase;
-      letter-spacing: 1px;
-      opacity: 0.6;
-      margin-bottom: 8px;
-    }
-    .mode-item {
-      padding: 12px 14px;
-      background: rgba(255, 255, 255, 0.04);
-      border: 1px solid rgba(255, 255, 255, 0.15);
-      border-radius: 8px;
-      cursor: pointer;
-      transition: all 0.2s;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-    }
-    .mode-item:hover {
-      background: rgba(255, 255, 255, 0.08);
-      border-color: rgba(255, 255, 255, 0.3);
-    }
-    .mode-item.active {
-      background: #ffffff;
-      color: #000;
-      border-color: #ffffff;
-      box-shadow: 0 0 15px rgba(255, 255, 255, 0.3);
-    }
-    .mode-name {
-      font-size: 13px;
-      font-weight: 500;
-    }
-    .mode-indicator {
-      width: 6px;
-      height: 6px;
-      border-radius: 50%;
-      background: currentColor;
-    }
-    .add-mode {
-      padding: 12px;
-      background: rgba(255, 255, 255, 0.06);
-      border: 1px dashed rgba(255, 255, 255, 0.3);
-      border-radius: 8px;
-      cursor: pointer;
-      text-align: center;
-      font-size: 12px;
-      opacity: 0.7;
-      transition: all 0.2s;
-      margin-top: auto;
-    }
-    .add-mode:hover {
-      opacity: 1;
-      background: rgba(255, 255, 255, 0.1);
-    }
-  </style>
-</head>
-<body>
-  <div class="mode-selector">
-    <div class="mode-title">Select Mode</div>
-    <div id="modeList"></div>
-    <div class="add-mode" onclick="addMode()">+ New Mode</div>
-  </div>
-  <script src="renderer-mode.js"></script>
-</body>
-</html>`;
-
-// GRAPH.HTML - Knowledge Graph
-files['graph.html'] = `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="UTF-8">
-  <title>Knowledge Graph</title>
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body {
-      font-family: 'Courier New', monospace;
-      background: transparent;
-      overflow: hidden;
-      height: 100vh;
-      color: #ffffff;
-    }
-    .graph-container {
-      width: 100%;
-      height: 100%;
-      background: rgba(0, 0, 0, 0.85);
-      backdrop-filter: blur(20px) saturate(120%);
-      border: 1px solid rgba(255, 255, 255, 0.2);
-      border-radius: 14px;
-      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
-      display: flex;
-      flex-direction: column;
-      overflow: hidden;
-    }
-    .graph-header {
-      padding: 20px 24px;
-      border-bottom: 1px solid rgba(255, 255, 255, 0.2);
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-    }
-    .graph-title {
-      font-size: 16px;
-      font-weight: bold;
-      text-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
-      letter-spacing: 1px;
-      text-transform: uppercase;
-    }
-    .graph-title::before { content: '> '; opacity: 0.7; }
-    .close-btn {
-      width: 32px;
-      height: 32px;
-      background: rgba(255, 255, 255, 0.08);
-      border-radius: 6px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      cursor: pointer;
-      transition: all 0.2s;
-      font-size: 20px;
-    }
-    .close-btn:hover {
-      background: rgba(255, 0, 0, 0.2);
-    }
-    #graphCanvas {
-      flex: 1;
-      width: 100%;
-    }
-    .graph-info {
-      padding: 10px 24px;
-      border-top: 1px solid rgba(255, 255, 255, 0.2);
-      font-size: 10px;
-      opacity: 0.5;
-      text-align: center;
-    }
-  </style>
-</head>
-<body>
-  <div class="graph-container">
-    <div class="graph-header">
-      <div class="graph-title">Knowledge Graph</div>
-      <div class="close-btn" onclick="window.close()">×</div>
-    </div>
-    <canvas id="graphCanvas"></canvas>
-    <div class="graph-info">Drag nodes • Double-click to connect • Right-click to delete connection</div>
-  </div>
-  <script src="renderer-graph.js"></script>
-</body>
-</html>`;
-
-// SETTINGS.HTML
-files['settings.html'] = `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="UTF-8">
-  <title>Settings</title>
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body {
-      font-family: 'Courier New', monospace;
-      background: transparent;
-      overflow: hidden;
-      height: 100vh;
-      color: #ffffff;
-    }
-    .settings-container {
-      width: 100%;
-      height: 100%;
-      background: rgba(0, 0, 0, 0.90);
-      backdrop-filter: blur(20px) saturate(120%);
-      border: 1px solid rgba(255, 255, 255, 0.2);
-      border-radius: 14px;
-      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.7);
-      display: flex;
-      flex-direction: column;
-      overflow: hidden;
-    }
-    .settings-header {
-      padding: 20px 24px;
-      border-bottom: 1px solid rgba(255, 255, 255, 0.2);
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-    }
-    .settings-title {
-      font-size: 16px;
-      font-weight: bold;
-      text-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
-      letter-spacing: 1px;
-      text-transform: uppercase;
-    }
-    .settings-title::before { content: '> '; opacity: 0.7; }
-    .close-btn {
-      width: 32px;
-      height: 32px;
-      background: rgba(255, 255, 255, 0.08);
-      border-radius: 6px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      cursor: pointer;
-      font-size: 20px;
-    }
-    .settings-content {
-      flex: 1;
-      overflow-y: auto;
-      padding: 24px;
-    }
-    .section-title {
-      font-size: 13px;
-      text-transform: uppercase;
-      letter-spacing: 1px;
-      opacity: 0.6;
-      margin-bottom: 16px;
-    }
-    .dir-list {
-      margin-bottom: 12px;
-    }
-    .dir-item {
-      padding: 12px;
-      background: rgba(255, 255, 255, 0.04);
-      border: 1px solid rgba(255, 255, 255, 0.15);
-      border-radius: 8px;
-      margin-bottom: 8px;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      font-size: 12px;
-    }
-    .remove-btn {
-      padding: 4px 12px;
-      background: rgba(255, 0, 0, 0.2);
-      border: 1px solid rgba(255, 0, 0, 0.3);
-      border-radius: 4px;
-      cursor: pointer;
-      font-size: 11px;
-      color: #ff4444;
-    }
-    .add-btn {
-      padding: 12px 20px;
-      background: #ffffff;
-      border: none;
-      border-radius: 8px;
-      color: #000;
-      font-size: 13px;
-      font-weight: bold;
-      cursor: pointer;
-      text-transform: uppercase;
-      width: 100%;
-    }
-  </style>
-</head>
-<body>
-  <div class="settings-container">
-    <div class="settings-header">
-      <div class="settings-title">Settings</div>
-      <div class="close-btn" onclick="window.close()">×</div>
-    </div>
-    <div class="settings-content">
-      <div class="section-title">Search Directories</div>
-      <div class="dir-list" id="dirList"></div>
-      <button class="add-btn" onclick="addDirectory()">+ Add Directory</button>
-    </div>
-  </div>
-  <script src="renderer-settings.js"></script>
-</body>
-</html>`;
-
-// ALL PRELOAD FILES
-files['preload-sidebar.js'] = `const { contextBridge, ipcRenderer } = require('electron');
-contextBridge.exposeInMainWorld('sidebarAPI', {
-  openPanel: (section) => ipcRenderer.invoke('open-panel', section),
-  openGraphView: () => ipcRenderer.invoke('open-graph-view'),
-  openModeSelector: () => ipcRenderer.invoke('open-mode-selector'),
-  openSettings: () => ipcRenderer.invoke('open-settings'),
-  getData: () => ipcRenderer.invoke('get-data'),
-  onDataUpdated: (callback) => ipcRenderer.on('data-updated', callback)
-});`;
-
-files['preload-panel.js'] = `const { contextBridge, ipcRenderer } = require('electron');
-contextBridge.exposeInMainWorld('panelAPI', {
-  getData: () => ipcRenderer.invoke('get-data'),
-  addFile: (file) => ipcRenderer.invoke('add-file', file),
-  removeFile: (id) => ipcRenderer.invoke('remove-file', id),
-  openFile: (path) => ipcRenderer.invoke('open-file', path),
-  selectFiles: () => ipcRenderer.invoke('select-files'),
-  addBookmark: (bookmark) => ipcRenderer.invoke('add-bookmark', bookmark),
-  removeBookmark: (id) => ipcRenderer.invoke('remove-bookmark', id),
-  openBookmark: (url) => ipcRenderer.invoke('open-bookmark', url),
-  addApp: (app) => ipcRenderer.invoke('add-app', app),
-  removeApp: (id) => ipcRenderer.invoke('remove-app', id),
-  launchApp: (path) => ipcRenderer.invoke('launch-app', path),
-  addTask: (task) => ipcRenderer.invoke('add-task', task),
-  toggleTask: (id) => ipcRenderer.invoke('toggle-task', id),
-  deleteTask: (id) => ipcRenderer.invoke('delete-task', id),
-  switchMode: (id) => ipcRenderer.invoke('switch-mode', id),
-  openModeSelector: () => ipcRenderer.invoke('open-mode-selector'),
-  onSetPanel: (callback) => ipcRenderer.on('set-panel', (_, section) => callback(section)),
-  onDataUpdated: (callback) => ipcRenderer.on('data-updated', callback)
-});`;
-
-files['preload-mode.js'] = `const { contextBridge, ipcRenderer } = require('electron');
-contextBridge.exposeInMainWorld('modeAPI', {
-  getData: () => ipcRenderer.invoke('get-data'),
-  switchMode: (id) => ipcRenderer.invoke('switch-mode', id),
-  addMode: (mode) => ipcRenderer.invoke('add-mode', mode),
-  onDataUpdated: (callback) => ipcRenderer.on('data-updated', callback)
-});`;
-
+// FIXED PRELOAD-COMMAND.JS
 files['preload-command.js'] = `const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('commandAPI', {
   hide: () => ipcRenderer.invoke('hide-command'),
-  unifiedSearch: (query) => ipcRenderer.invoke('unified-search', query),
+  searchAI: (query) => ipcRenderer.invoke('search-ai', query),
+  searchGoogle: (query) => ipcRenderer.invoke('search-google', query),
+  searchLocal: (query) => ipcRenderer.invoke('search-local', query),
   executeResult: (result) => ipcRenderer.invoke('execute-result', result)
 });`;
 
-files['preload-graph.js'] = `const { contextBridge, ipcRenderer } = require('electron');
-contextBridge.exposeInMainWorld('graphAPI', {
-  getData: () => ipcRenderer.invoke('get-data'),
-  addConnection: (connection) => ipcRenderer.invoke('add-connection', connection),
-  removeConnection: (id) => ipcRenderer.invoke('remove-connection', id),
-  onDataUpdated: (callback) => ipcRenderer.on('data-updated', callback)
-});`;
-
-files['preload-settings.js'] = `const { contextBridge, ipcRenderer } = require('electron');
-contextBridge.exposeInMainWorld('settingsAPI', {
-  getSettings: () => ipcRenderer.invoke('get-settings'),
-  addSearchDirectory: () => ipcRenderer.invoke('add-search-directory'),
-  removeSearchDirectory: (dir) => ipcRenderer.invoke('remove-search-directory', dir)
-});`;
-
-// ALL RENDERER FILES - I'll continue in next message with these complete renderer scripts...
-
-console.log('\n⏳ Writing part 2...');
-Object.entries(files).forEach(([filename, content]) => {
-  fs.writeFileSync(filename, content);
-  console.log(`✓ ${filename}`);
-});
-
-// ============================================
-// RENDERER FILES - PART 3
-// ============================================
-
-// RENDERER-SIDEBAR.JS
-files['renderer-sidebar.js'] = `let data = null;
-
-async function init() {
-  data = await window.sidebarAPI.getData();
-  updateBadges();
-  
-  window.sidebarAPI.onDataUpdated(async () => {
-    data = await window.sidebarAPI.getData();
-    updateBadges();
-  });
-}
-
-function openPanel(section) {
-  window.sidebarAPI.openPanel(section);
-}
-
-function openGraphView() {
-  window.sidebarAPI.openGraphView();
-}
-
-function openModeSelector() {
-  window.sidebarAPI.openModeSelector();
-}
-
-function openSettings() {
-  window.sidebarAPI.openSettings();
-}
-
-function updateBadges() {
-  const m = data.currentMode;
-  const totalFiles = data.files.filter(f => f.mode === m).length + 
-                     data.bookmarks.filter(b => b.mode === m).length + 
-                     data.apps.filter(a => a.mode === m).length;
-  
-  document.getElementById('filesBadge').textContent = totalFiles;
-  document.getElementById('tasksBadge').textContent = data.tasks.filter(t => t.mode === m && !t.completed).length;
-}
-
-init();`;
-
-// RENDERER-PANEL.JS
-files['renderer-panel.js'] = `let data = null;
-let currentSection = null;
-let currentTab = 'files';
-
-async function init() {
-  data = await window.panelAPI.getData();
-  
-  window.panelAPI.onSetPanel(async (section) => {
-    currentSection = section;
-    data = await window.panelAPI.getData();
-    render();
-  });
-  
-  window.panelAPI.onDataUpdated(async () => {
-    data = await window.panelAPI.getData();
-    render();
-  });
-}
-
-function render() {
-  document.getElementById('panelTitle').textContent = currentSection.toUpperCase();
-  
-  const currentMode = data.modes.find(m => m.id === data.currentMode);
-  document.getElementById('modeIndicator').textContent = currentMode ? currentMode.name : 'Work';
-  
-  const content = document.getElementById('panelContent');
-  
-  if (currentSection === 'files') {
-    renderFilesSection();
-  } else if (currentSection === 'tasks') {
-    renderTasks(content);
-  }
-}
-
-function openModeSelector() {
-  window.panelAPI.openModeSelector();
-}
-
-function renderFilesSection() {
-  const tabsContainer = document.getElementById('tabsContainer');
-  tabsContainer.classList.remove('hidden');
-  tabsContainer.innerHTML = \`
-    <div class="tab \${currentTab === 'files' ? 'active' : ''}" onclick="switchTab('files')">Files</div>
-    <div class="tab \${currentTab === 'bookmarks' ? 'active' : ''}" onclick="switchTab('bookmarks')">Bookmarks</div>
-    <div class="tab \${currentTab === 'apps' ? 'active' : ''}" onclick="switchTab('apps')">Apps</div>
-  \`;
-  
-  const content = document.getElementById('panelContent');
-  if (currentTab === 'files') renderFiles(content);
-  else if (currentTab === 'bookmarks') renderBookmarks(content);
-  else if (currentTab === 'apps') renderApps(content);
-}
-
-function switchTab(tab) {
-  currentTab = tab;
-  renderFilesSection();
-}
-
-function renderFiles(content) {
-  const filtered = data.files.filter(f => f.mode === data.currentMode);
-  content.innerHTML = \`
-    <div class="drop-zone" id="drop">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
-        <path d="M21 10c0-1.1-.9-2-2-2h-6.5l-2-2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V10z"/>
-        <line x1="12" y1="13" x2="12" y2="19"/>
-        <line x1="9" y1="16" x2="15" y2="16"/>
-      </svg>
-      Drop files here
-    </div>
-    <div>\${filtered.length ? filtered.map(f => \`
-      <div class="file-item" onclick="openFile('\${f.path.replace(/\\\\/g, '\\\\\\\\')}')">
-        <span class="file-icon">📄</span>
-        <div class="file-info">
-          <div class="file-name">\${f.name}</div>
-        </div>
-        <div class="file-delete" onclick="event.stopPropagation();removeFile('\${f.id}')">×</div>
-      </div>
-    \`).join('') : '<div class="empty">NO FILES</div>'}</div>
-    <button class="btn" onclick="addFiles()">+ ADD FILES</button>
-  \`;
-  setupDrop();
-}
-
-function renderBookmarks(content) {
-  const filtered = data.bookmarks.filter(b => b.mode === data.currentMode);
-  content.innerHTML = \`
-    <div class="quick-add">
-      <input type="text" id="bookmarkUrl" class="input" placeholder="Paste URL (https://...)">
-      <button class="btn" onclick="addBookmark()">+ ADD</button>
-    </div>
-    <div>\${filtered.length ? filtered.map(b => \`
-      <div class="file-item" onclick="openBookmark('\${b.url}')">
-        <span class="file-icon">🔖</span>
-        <div class="file-info">
-          <div class="file-name">\${b.name || b.url}</div>
-        </div>
-        <div class="file-delete" onclick="event.stopPropagation();removeBookmark('\${b.id}')">×</div>
-      </div>
-    \`).join('') : '<div class="empty">NO BOOKMARKS</div>'}</div>
-  \`;
-}
-
-function renderApps(content) {
-  const filtered = data.apps.filter(a => a.mode === data.currentMode);
-  content.innerHTML = \`
-    <button class="btn" onclick="addApp()" style="margin-bottom:20px">+ ADD APP</button>
-    <div>\${filtered.length ? filtered.map(a => \`
-      <div class="file-item" onclick="launchApp('\${a.path.replace(/\\\\/g, '\\\\\\\\')}')">
-        <span class="file-icon">⚡</span>
-        <div class="file-info">
-          <div class="file-name">\${a.name}</div>
-        </div>
-        <div class="file-delete" onclick="event.stopPropagation();removeApp('\${a.id}')">×</div>
-      </div>
-    \`).join('') : '<div class="empty">NO APPS</div>'}</div>
-  \`;
-}
-
-function renderTasks(content) {
-  document.getElementById('tabsContainer').classList.add('hidden');
-  const filtered = data.tasks.filter(t => t.mode === data.currentMode);
-  const active = filtered.filter(t => !t.completed);
-  const completed = filtered.filter(t => t.completed);
-  
-  content.innerHTML = \`
-    <div class="quick-add">
-      <input type="text" id="taskTitle" class="input" placeholder="Task title...">
-      <div class="input-row">
-        <input type="datetime-local" id="taskStart" class="input input-small" placeholder="Start">
-        <input type="datetime-local" id="taskEnd" class="input input-small" placeholder="End">
-        <button class="btn" onclick="addTask()">+ ADD</button>
-      </div>
-    </div>
-    <div>\${active.length ? active.map(t => {
-      const now = new Date();
-      const end = new Date(t.endDate);
-      const daysLeft = Math.ceil((end - now) / (1000 * 60 * 60 * 24));
-      const dueDateText = daysLeft > 0 ? \`\${daysLeft}d left\` : daysLeft === 0 ? 'Today' : 'Overdue';
-      
-      return \`
-        <div class="file-item">
-          <span onclick="toggleTask('\${t.id}')" style="cursor:pointer;font-size:20px">☐</span>
-          <div class="file-info">
-            <div class="file-name">\${t.title}</div>
-            <div class="file-meta">\${new Date(t.startDate).toLocaleDateString()} - \${new Date(t.endDate).toLocaleDateString()} • \${dueDateText}</div>
-          </div>
-          <div class="file-delete" onclick="deleteTask('\${t.id}')">×</div>
-        </div>
-      \`;
-    }).join('') : '<div class="empty">NO ACTIVE TASKS</div>'}</div>
-    \${completed.length ? '<div style="margin-top:20px;padding-top:20px;border-top:1px solid rgba(255,255,255,0.2)"></div>' : ''}
-    \${completed.map(t => \`
-      <div class="file-item" style="opacity:0.5">
-        <span onclick="toggleTask('\${t.id}')" style="cursor:pointer;font-size:20px">☑</span>
-        <div class="file-info">
-          <div class="file-name" style="text-decoration:line-through">\${t.title}</div>
-          <div class="file-meta">Completed \${new Date(t.completedAt).toLocaleDateString()}</div>
-        </div>
-        <div class="file-delete" onclick="deleteTask('\${t.id}')">×</div>
-      </div>
-    \`).join('')}
-  \`;
-}
-
-function setupDrop() {
-  const zone = document.getElementById('drop');
-  if (!zone) return;
-  
-  zone.addEventListener('dragover', (e) => {
-    e.preventDefault();
-    zone.classList.add('drag-over');
-  });
-  
-  zone.addEventListener('dragleave', () => {
-    zone.classList.remove('drag-over');
-  });
-  
-  zone.addEventListener('drop', async (e) => {
-    e.preventDefault();
-    zone.classList.remove('drag-over');
-    
-    for (const file of Array.from(e.dataTransfer.files)) {
-      await window.panelAPI.addFile({
-        id: Date.now() + Math.random(),
-        name: file.name,
-        path: file.path,
-        mode: data.currentMode,
-        date: new Date().toISOString()
-      });
-    }
-  });
-}
-
-async function addFiles() {
-  const paths = await window.panelAPI.selectFiles();
-  for (const p of paths) {
-    await window.panelAPI.addFile({
-      id: Date.now() + Math.random(),
-      name: p.split(/[\\\\\\/]/).pop(),
-      path: p,
-      mode: data.currentMode,
-      date: new Date().toISOString()
-    });
-  }
-}
-
-async function openFile(filePath) {
-  if (!filePath || filePath === 'undefined') {
-    alert('File path is missing');
-    return;
-  }
-  await window.panelAPI.openFile(filePath);
-}
-
-async function removeFile(id) {
-  await window.panelAPI.removeFile(id);
-}
-
-async function addBookmark() {
-  const urlInput = document.getElementById('bookmarkUrl');
-  const url = urlInput.value.trim();
-  if (!url) return;
-  
-  await window.panelAPI.addBookmark({
-    id: Date.now(),
-    name: url,
-    url: url,
-    mode: data.currentMode,
-    date: new Date().toISOString()
-  });
-  urlInput.value = '';
-}
-
-async function openBookmark(url) {
-  await window.panelAPI.openBookmark(url);
-}
-
-async function removeBookmark(id) {
-  await window.panelAPI.removeBookmark(id);
-}
-
-async function addApp() {
-  const paths = await window.panelAPI.selectFiles();
-  if (paths.length > 0) {
-    await window.panelAPI.addApp({
-      id: Date.now(),
-      name: paths[0].split(/[\\\\\\/]/).pop(),
-      path: paths[0],
-      mode: data.currentMode
-    });
-  }
-}
-
-async function launchApp(appPath) {
-  await window.panelAPI.launchApp(appPath);
-}
-
-async function removeApp(id) {
-  await window.panelAPI.removeApp(id);
-}
-
-async function addTask() {
-  const titleInput = document.getElementById('taskTitle');
-  const startInput = document.getElementById('taskStart');
-  const endInput = document.getElementById('taskEnd');
-  
-  if (!titleInput.value.trim() || !startInput.value || !endInput.value) {
-    alert('Please fill all fields');
-    return;
-  }
-  
-  await window.panelAPI.addTask({
-    id: Date.now(),
-    title: titleInput.value,
-    startDate: startInput.value,
-    endDate: endInput.value,
-    mode: data.currentMode,
-    completed: false,
-    createdAt: new Date().toISOString()
-  });
-  
-  titleInput.value = '';
-  startInput.value = '';
-  endInput.value = '';
-}
-
-async function toggleTask(id) {
-  await window.panelAPI.toggleTask(id);
-}
-
-async function deleteTask(id) {
-  await window.panelAPI.deleteTask(id);
-}
-
-init();`;
-
-// RENDERER-COMMAND.JS - With AI, Web, Files, Apps search
+// FIXED RENDERER-COMMAND.JS
 files['renderer-command.js'] = `const input = document.getElementById('input');
 const resultsContainer = document.getElementById('results');
 const loading = document.getElementById('loading');
 
-let allResults = { ai: [], web: [], files: [], apps: [] };
+let currentSearchType = 'local';
+let allResults = [];
 let selectedIndex = -1;
-let allItems = [];
 let searchTimer = null;
 
 input.focus();
 
-input.addEventListener('input', async (e) => {
+function switchSearchType(type) {
+  currentSearchType = type;
+  document.querySelectorAll('.search-tab').forEach(tab => {
+    tab.classList.toggle('active', tab.dataset.type === type);
+  });
+  
+  if (input.value.trim()) {
+    performSearch(input.value.trim());
+  }
+}
+
+input.addEventListener('input', (e) => {
   const query = e.target.value.trim();
   
   if (!query) {
@@ -1981,11 +1047,74 @@ input.addEventListener('input', async (e) => {
   loading.classList.remove('hidden');
   
   clearTimeout(searchTimer);
-  searchTimer = setTimeout(async () => {
-    allResults = await window.commandAPI.unifiedSearch(query);
-    showResults();
+  searchTimer = setTimeout(() => {
+    performSearch(query);
   }, 300);
 });
+
+async function performSearch(query) {
+  try {
+    allResults = [];
+    
+    if (currentSearchType === 'local') {
+      const localResults = await window.commandAPI.searchLocal(query);
+      allResults = [...localResults.files, ...localResults.apps];
+    } else if (currentSearchType === 'ai') {
+      allResults = await window.commandAPI.searchAI(query);
+    } else if (currentSearchType === 'google') {
+      allResults = await window.commandAPI.searchGoogle(query);
+    }
+    
+    showResults();
+  } catch (error) {
+    console.error('Search error:', error);
+    loading.classList.add('hidden');
+  }
+}
+
+function showResults() {
+  loading.classList.add('hidden');
+  
+  if (!allResults || allResults.length === 0) {
+    resultsContainer.innerHTML = '<div class="loading">No results found</div>';
+    resultsContainer.classList.remove('hidden');
+    return;
+  }
+  
+  let html = '';
+  allResults.forEach((item, i) => {
+    const icons = {
+      'ai': '🤖',
+      'web': '🌐',
+      'file': '📄',
+      'folder': '📁',
+      'app': '⚡'
+    };
+    const icon = icons[item.type] || '📄';
+    
+    html += \`
+      <div class="item" data-index="\${i}">
+        <div class="item-icon">\${icon}</div>
+        <div class="item-content">
+          <div class="item-title">\${item.title}</div>
+          <div class="item-desc">\${item.description || ''}</div>
+        </div>
+      </div>
+    \`;
+  });
+  
+  resultsContainer.innerHTML = html;
+  resultsContainer.classList.remove('hidden');
+  selectedIndex = 0;
+  updateSelection();
+  
+  document.querySelectorAll('.item').forEach((el, i) => {
+    el.onclick = () => {
+      selectedIndex = i;
+      executeSelected();
+    };
+  });
+}
 
 input.addEventListener('keydown', (e) => {
   if (e.key === 'ArrowDown') {
@@ -2002,93 +1131,15 @@ input.addEventListener('keydown', (e) => {
   }
 });
 
-function showResults() {
-  loading.classList.add('hidden');
-  
-  allItems = [];
-  let html = '';
-  
-  // AI Results
-  if (allResults.ai && allResults.ai.length > 0) {
-    html += '<div class="category"><div class="category-title">AI Response</div>';
-    allResults.ai.forEach(item => {
-      html += createItem(item, '🤖');
-      allItems.push(item);
-    });
-    html += '</div>';
-  }
-  
-  // Web Results
-  if (allResults.web && allResults.web.length > 0) {
-    html += '<div class="category"><div class="category-title">Web Results</div>';
-    allResults.web.forEach(item => {
-      html += createItem(item, '🌐');
-      allItems.push(item);
-    });
-    html += '</div>';
-  }
-  
-  // File Results
-  if (allResults.files && allResults.files.length > 0) {
-    html += '<div class="category"><div class="category-title">Files</div>';
-    allResults.files.forEach(item => {
-      const icon = item.type === 'folder' ? '📁' : '📄';
-      html += createItem(item, icon);
-      allItems.push(item);
-    });
-    html += '</div>';
-  }
-  
-  // App Results
-  if (allResults.apps && allResults.apps.length > 0) {
-    html += '<div class="category"><div class="category-title">Apps</div>';
-    allResults.apps.forEach(item => {
-      html += createItem(item, '⚡');
-      allItems.push(item);
-    });
-    html += '</div>';
-  }
-  
-  if (html) {
-    resultsContainer.innerHTML = html;
-    resultsContainer.classList.remove('hidden');
-    selectedIndex = 0;
-    updateSelection();
-    
-    // Add click handlers
-    document.querySelectorAll('.item').forEach((el, i) => {
-      el.onclick = () => {
-        selectedIndex = i;
-        executeSelected();
-      };
-    });
-  } else {
-    resultsContainer.innerHTML = '<div class="empty" style="padding:40px;text-align:center;color:rgba(255,255,255,0.3)">No results found</div>';
-    resultsContainer.classList.remove('hidden');
-  }
-}
-
-function createItem(item, icon) {
-  return \`
-    <div class="item">
-      <div class="item-icon">\${icon}</div>
-      <div class="item-content">
-        <div class="item-title">\${item.title}</div>
-        <div class="item-desc">\${item.description || ''}</div>
-      </div>
-    </div>
-  \`;
-}
-
 function selectNext() {
-  if (allItems.length === 0) return;
-  selectedIndex = (selectedIndex + 1) % allItems.length;
+  if (allResults.length === 0) return;
+  selectedIndex = (selectedIndex + 1) % allResults.length;
   updateSelection();
 }
 
 function selectPrev() {
-  if (allItems.length === 0) return;
-  selectedIndex = selectedIndex <= 0 ? allItems.length - 1 : selectedIndex - 1;
+  if (allResults.length === 0) return;
+  selectedIndex = selectedIndex <= 0 ? allResults.length - 1 : selectedIndex - 1;
   updateSelection();
 }
 
@@ -2102,346 +1153,24 @@ function updateSelection() {
 }
 
 async function executeSelected() {
-  if (selectedIndex >= 0 && allItems[selectedIndex]) {
-    await window.commandAPI.executeResult(allItems[selectedIndex]);
+  if (selectedIndex >= 0 && allResults[selectedIndex]) {
+    await window.commandAPI.executeResult(allResults[selectedIndex]);
     window.commandAPI.hide();
   }
 }`;
 
-// RENDERER-MODE.JS
-files['renderer-mode.js'] = `let data = null;
-
-async function init() {
-  data = await window.modeAPI.getData();
-  render();
-  
-  window.modeAPI.onDataUpdated(async () => {
-    data = await window.modeAPI.getData();
-    render();
-  });
-}
-
-function render() {
-  const list = document.getElementById('modeList');
-  list.innerHTML = data.modes.map(m => \`
-    <div class="mode-item \${m.id === data.currentMode ? 'active' : ''}" onclick="switchMode('\${m.id}')">
-      <span class="mode-name">\${m.name}</span>
-      <span class="mode-indicator"></span>
-    </div>
-  \`).join('');
-}
-
-async function switchMode(id) {
-  await window.modeAPI.switchMode(id);
-  window.close();
-}
-
-async function addMode() {
-  const name = prompt('Mode name:');
-  if (name && name.trim()) {
-    await window.modeAPI.addMode({
-      id: 'mode_' + Date.now(),
-      name: name.trim(),
-      color: '#ffffff'
-    });
-  }
-}
-
-init();`;
-
-// RENDERER-GRAPH.JS - Interactive Knowledge Graph
-files['renderer-graph.js'] = `const canvas = document.getElementById('graphCanvas');
-const ctx = canvas.getContext('2d');
-
-let data = null;
-let nodes = [];
-let edges = [];
-let selectedNode = null;
-let connectFrom = null;
-let isDragging = false;
-let draggedNode = null;
-let mouseX = 0;
-let mouseY = 0;
-
-function resizeCanvas() {
-  canvas.width = canvas.offsetWidth;
-  canvas.height = canvas.offsetHeight;
-}
-
-resizeCanvas();
-window.addEventListener('resize', resizeCanvas);
-
-async function init() {
-  data = await window.graphAPI.getData();
-  createGraph();
-  animate();
-  
-  window.graphAPI.onDataUpdated(async () => {
-    data = await window.graphAPI.getData();
-    createGraph();
-  });
-}
-
-function createGraph() {
-  nodes = [];
-  edges = [];
-  
-  const allItems = [
-    ...data.files.map(f => ({ ...f, type: 'file', label: f.name })),
-    ...data.tasks.map(t => ({ ...t, type: 'task', label: t.title })),
-    ...data.bookmarks.map(b => ({ ...b, type: 'bookmark', label: b.name || b.url }))
-  ];
-  
-  allItems.forEach((item, i) => {
-    const angle = (i / allItems.length) * Math.PI * 2;
-    const radius = Math.min(canvas.width, canvas.height) * 0.3;
-    
-    nodes.push({
-      id: item.id,
-      x: canvas.width / 2 + Math.cos(angle) * radius,
-      y: canvas.height / 2 + Math.sin(angle) * radius,
-      vx: 0,
-      vy: 0,
-      radius: 15,
-      type: item.type,
-      label: (item.label || 'Node').substring(0, 20)
-    });
-  });
-  
-  data.connections.forEach(conn => {
-    const source = nodes.find(n => n.id === conn.from);
-    const target = nodes.find(n => n.id === conn.to);
-    if (source && target) {
-      edges.push({ source, target, id: conn.id });
-    }
-  });
-}
-
-function applyForces() {
-  const centerX = canvas.width / 2;
-  const centerY = canvas.height / 2;
-  
-  nodes.forEach(node => {
-    // Center force
-    node.vx += (centerX - node.x) * 0.0005;
-    node.vy += (centerY - node.y) * 0.0005;
-    
-    // Repulsion
-    nodes.forEach(other => {
-      if (node === other) return;
-      const dx = other.x - node.x;
-      const dy = other.y - node.y;
-      const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-      if (dist < 150) {
-        const force = (150 - dist) / dist * 0.3;
-        node.vx -= dx * force;
-        node.vy -= dy * force;
-      }
-    });
-    
-    // Edge attraction
-    edges.forEach(edge => {
-      if (edge.source === node) {
-        const dx = edge.target.x - node.x;
-        const dy = edge.target.y - node.y;
-        node.vx += dx * 0.005;
-        node.vy += dy * 0.005;
-      }
-      if (edge.target === node) {
-        const dx = edge.source.x - node.x;
-        const dy = edge.source.y - node.y;
-        node.vx += dx * 0.005;
-        node.vy += dy * 0.005;
-      }
-    });
-    
-    // Apply velocity
-    node.x += node.vx;
-    node.y += node.vy;
-    node.vx *= 0.85;
-    node.vy *= 0.85;
-    
-    // Bounds
-    node.x = Math.max(node.radius, Math.min(canvas.width - node.radius, node.x));
-    node.y = Math.max(node.radius, Math.min(canvas.height - node.radius, node.y));
-  });
-}
-
-function draw() {
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  
-  // Draw edges
-  ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
-  ctx.lineWidth = 1;
-  edges.forEach(edge => {
-    if (edge.source && edge.target) {
-      ctx.beginPath();
-      ctx.moveTo(edge.source.x, edge.source.y);
-      ctx.lineTo(edge.target.x, edge.target.y);
-      ctx.stroke();
-    }
-  });
-  
-  // Draw connection line
-  if (connectFrom) {
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
-    ctx.setLineDash([5, 5]);
-    ctx.beginPath();
-    ctx.moveTo(connectFrom.x, connectFrom.y);
-    ctx.lineTo(mouseX, mouseY);
-    ctx.stroke();
-    ctx.setLineDash([]);
-  }
-  
-  // Draw nodes
-  nodes.forEach(node => {
-    ctx.beginPath();
-    ctx.arc(node.x, node.y, node.radius, 0, Math.PI * 2);
-    
-    const colors = {
-      file: 'rgba(100, 150, 255, 0.7)',
-      task: 'rgba(100, 255, 150, 0.7)',
-      bookmark: 'rgba(255, 150, 100, 0.7)'
-    };
-    
-    ctx.fillStyle = colors[node.type] || 'rgba(255, 255, 255, 0.7)';
-    ctx.fill();
-    
-    ctx.strokeStyle = node === selectedNode ? '#ffffff' : 'rgba(255, 255, 255, 0.3)';
-    ctx.lineWidth = node === selectedNode ? 2 : 1;
-    ctx.stroke();
-    
-    // Label
-    ctx.fillStyle = '#ffffff';
-    ctx.font = '9px Courier New';
-    ctx.textAlign = 'center';
-    ctx.fillText(node.label, node.x, node.y + node.radius + 10);
-  });
-}
-
-function animate() {
-  applyForces();
-  draw();
-  requestAnimationFrame(animate);
-}
-
-canvas.addEventListener('mousemove', (e) => {
-  const rect = canvas.getBoundingClientRect();
-  mouseX = e.clientX - rect.left;
-  mouseY = e.clientY - rect.top;
-  
-  if (isDragging && draggedNode) {
-    draggedNode.x = mouseX;
-    draggedNode.y = mouseY;
-    draggedNode.vx = 0;
-    draggedNode.vy = 0;
-  }
-});
-
-canvas.addEventListener('mousedown', (e) => {
-  const rect = canvas.getBoundingClientRect();
-  const x = e.clientX - rect.left;
-  const y = e.clientY - rect.top;
-  
-  draggedNode = nodes.find(node => {
-    const dist = Math.sqrt((node.x - x) ** 2 + (node.y - y) ** 2);
-    return dist < node.radius;
-  });
-  
-  if (draggedNode) {
-    selectedNode = draggedNode;
-    isDragging = true;
-  }
-});
-
-canvas.addEventListener('mouseup', () => {
-  isDragging = false;
-  draggedNode = null;
-});
-
-canvas.addEventListener('dblclick', (e) => {
-  const rect = canvas.getBoundingClientRect();
-  const x = e.clientX - rect.left;
-  const y = e.clientY - rect.top;
-  
-  const node = nodes.find(n => {
-    const dist = Math.sqrt((n.x - x) ** 2 + (n.y - y) ** 2);
-    return dist < n.radius;
-  });
-  
-  if (node) {
-    if (!connectFrom) {
-      connectFrom = node;
-    } else if (connectFrom !== node) {
-      window.graphAPI.addConnection({
-        id: Date.now(),
-        from: connectFrom.id,
-        to: node.id
-      });
-      connectFrom = null;
-    } else {
-      connectFrom = null;
-    }
-  }
-});
-
-canvas.addEventListener('contextmenu', (e) => {
-  e.preventDefault();
-  const rect = canvas.getBoundingClientRect();
-  const x = e.clientX - rect.left;
-  const y = e.clientY - rect.top;
-  
-  edges.forEach((edge, i) => {
-    const midX = (edge.source.x + edge.target.x) / 2;
-    const midY = (edge.source.y + edge.target.y) / 2;
-    const dist = Math.sqrt((midX - x) ** 2 + (midY - y) ** 2);
-    
-    if (dist < 10) {
-      window.graphAPI.removeConnection(edge.id);
-    }
-  });
-});
-
-init();`;
-
-// RENDERER-SETTINGS.JS
-files['renderer-settings.js'] = `let settings = null;
-
-async function init() {
-  settings = await window.settingsAPI.getSettings();
-  render();
-}
-
-function render() {
-  const dirList = document.getElementById('dirList');
-  dirList.innerHTML = settings.searchDirectories.map(dir => \`
-    <div class="dir-item">
-      <span>\${dir}</span>
-      <span class="remove-btn" onclick="removeDirectory('\${dir.replace(/\\\\/g, '\\\\\\\\')}')">Remove</span>
-    </div>
-  \`).join('');
-}
-
-async function addDirectory() {
-  settings = await window.settingsAPI.addSearchDirectory();
-  render();
-}
-
-async function removeDirectory(dir) {
-  settings = await window.settingsAPI.removeSearchDirectory(dir);
-  render();
-}
-
-init();`;
-
 // Write all files
-console.log('Writing all files...');
-let count = 0;
+console.log('Writing fixed files...\n');
 Object.entries(files).forEach(([filename, content]) => {
   fs.writeFileSync(filename, content);
-  console.log('✓ ' + filename);
-  count++;
+  console.log(`✓ ${filename}`);
 });
 
-console.log('\n✅ Created ' + count + ' files!');
-console.log('\nRun: npm install && npm start');
+console.log('\n✅ All issues fixed!');
+console.log('\n🔧 Fixed:');
+console.log('  • Apps filter undefined error');
+console.log('  • Badge counts now update properly');
+console.log('  • Knowledge graph shows existing data');
+console.log('  • Reduced spacing between mode and settings');
+console.log('  • Separate search tabs: Local | AI | Google');
+console.log('\n▶️  Run: npm start');

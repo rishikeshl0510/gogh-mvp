@@ -8,6 +8,8 @@ let selectedNode = null;
 let connectFrom = null;
 let isDragging = false;
 let draggedNode = null;
+let mouseX = 0;
+let mouseY = 0;
 
 function resizeCanvas() {
   canvas.width = canvas.offsetWidth;
@@ -33,21 +35,24 @@ function createGraph() {
   edges = [];
   
   const allItems = [
-    ...data.files.map(f => ({ ...f, type: 'file' })),
-    ...data.tasks.map(t => ({ ...t, type: 'task' })),
-    ...data.bookmarks.map(b => ({ ...b, type: 'bookmark' }))
+    ...data.files.map(f => ({ ...f, type: 'file', label: f.name })),
+    ...data.tasks.map(t => ({ ...t, type: 'task', label: t.title })),
+    ...data.bookmarks.map(b => ({ ...b, type: 'bookmark', label: b.name || b.url }))
   ];
   
   allItems.forEach((item, i) => {
+    const angle = (i / allItems.length) * Math.PI * 2;
+    const radius = Math.min(canvas.width, canvas.height) * 0.3;
+    
     nodes.push({
       id: item.id,
-      x: Math.random() * (canvas.width - 100) + 50,
-      y: Math.random() * (canvas.height - 100) + 50,
+      x: canvas.width / 2 + Math.cos(angle) * radius,
+      y: canvas.height / 2 + Math.sin(angle) * radius,
       vx: 0,
       vy: 0,
       radius: 15,
       type: item.type,
-      label: (item.name || item.title || 'Node').substring(0, 20)
+      label: (item.label || 'Node').substring(0, 20)
     });
   });
   
@@ -65,9 +70,11 @@ function applyForces() {
   const centerY = canvas.height / 2;
   
   nodes.forEach(node => {
+    // Center force
     node.vx += (centerX - node.x) * 0.0005;
     node.vy += (centerY - node.y) * 0.0005;
     
+    // Repulsion
     nodes.forEach(other => {
       if (node === other) return;
       const dx = other.x - node.x;
@@ -80,6 +87,7 @@ function applyForces() {
       }
     });
     
+    // Edge attraction
     edges.forEach(edge => {
       if (edge.source === node) {
         const dx = edge.target.x - node.x;
@@ -95,11 +103,13 @@ function applyForces() {
       }
     });
     
+    // Apply velocity
     node.x += node.vx;
     node.y += node.vy;
     node.vx *= 0.85;
     node.vy *= 0.85;
     
+    // Bounds
     node.x = Math.max(node.radius, Math.min(canvas.width - node.radius, node.x));
     node.y = Math.max(node.radius, Math.min(canvas.height - node.radius, node.y));
   });
@@ -108,6 +118,7 @@ function applyForces() {
 function draw() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   
+  // Draw edges
   ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
   ctx.lineWidth = 1;
   edges.forEach(edge => {
@@ -119,6 +130,7 @@ function draw() {
     }
   });
   
+  // Draw connection line
   if (connectFrom) {
     ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
     ctx.setLineDash([5, 5]);
@@ -129,6 +141,7 @@ function draw() {
     ctx.setLineDash([]);
   }
   
+  // Draw nodes
   nodes.forEach(node => {
     ctx.beginPath();
     ctx.arc(node.x, node.y, node.radius, 0, Math.PI * 2);
@@ -146,6 +159,7 @@ function draw() {
     ctx.lineWidth = node === selectedNode ? 2 : 1;
     ctx.stroke();
     
+    // Label
     ctx.fillStyle = '#ffffff';
     ctx.font = '9px Courier New';
     ctx.textAlign = 'center';
@@ -158,8 +172,6 @@ function animate() {
   draw();
   requestAnimationFrame(animate);
 }
-
-let mouseX = 0, mouseY = 0;
 
 canvas.addEventListener('mousemove', (e) => {
   const rect = canvas.getBoundingClientRect();
@@ -215,8 +227,27 @@ canvas.addEventListener('dblclick', (e) => {
         to: node.id
       });
       connectFrom = null;
+    } else {
+      connectFrom = null;
     }
   }
+});
+
+canvas.addEventListener('contextmenu', (e) => {
+  e.preventDefault();
+  const rect = canvas.getBoundingClientRect();
+  const x = e.clientX - rect.left;
+  const y = e.clientY - rect.top;
+  
+  edges.forEach((edge, i) => {
+    const midX = (edge.source.x + edge.target.x) / 2;
+    const midY = (edge.source.y + edge.target.y) / 2;
+    const dist = Math.sqrt((midX - x) ** 2 + (midY - y) ** 2);
+    
+    if (dist < 10) {
+      window.graphAPI.removeConnection(edge.id);
+    }
+  });
 });
 
 init();

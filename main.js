@@ -2,6 +2,8 @@ const { app, BrowserWindow, globalShortcut, screen, ipcMain, Menu, dialog, shell
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
+const axios = require('axios');
+require('dotenv').config();
 
 let sidebarWindow = null;
 let panelWindow = null;
@@ -99,6 +101,65 @@ function saveDatabase(data) {
 
 let database = loadDatabase();
 
+// AI Search
+async function searchWithAI(query) {
+  if (!process.env.GEMINI_API_KEY || process.env.GEMINI_API_KEY === 'your_gemini_api_key_here') {
+    return [];
+  }
+  
+  try {
+    const response = await axios.post(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${process.env.GEMINI_API_KEY}`,
+      {
+        contents: [{
+          parts: [{ text: `Answer concisely in 1-2 sentences: ${query}` }]
+        }]
+      }
+    );
+    
+    const text = response.data.candidates[0].content.parts[0].text;
+    return [{
+      type: 'ai',
+      title: 'AI Response',
+      description: text,
+      action: 'copy'
+    }];
+  } catch (error) {
+    console.error('AI search error:', error.message);
+    return [];
+  }
+}
+
+// Google Search
+async function searchWithGoogle(query) {
+  if (!process.env.GOOGLE_SEARCH_API_KEY || process.env.GOOGLE_SEARCH_API_KEY === 'your_google_api_key_here') {
+    return [];
+  }
+  
+  try {
+    const response = await axios.get('https://www.googleapis.com/customsearch/v1', {
+      params: {
+        key: process.env.GOOGLE_SEARCH_API_KEY,
+        cx: process.env.GOOGLE_SEARCH_ENGINE_ID,
+        q: query,
+        num: 5
+      }
+    });
+    
+    return response.data.items.map(item => ({
+      type: 'web',
+      title: item.title,
+      description: item.snippet,
+      url: item.link,
+      action: 'open_url'
+    }));
+  } catch (error) {
+    console.error('Google search error:', error.message);
+    return [];
+  }
+}
+
+// Local file search
 async function searchLocalFiles(query) {
   const results = [];
   const searchDirs = settings.searchDirectories || [];
@@ -107,13 +168,19 @@ async function searchLocalFiles(query) {
     try {
       const files = await searchDirectory(dir, query, 0, 2);
       results.push(...files);
-      if (results.length >= 20) break;
+      if (results.length >= 10) break;
     } catch (e) {
-      console.error('Search error in', dir, e);
+      // Skip
     }
   }
   
-  return results.slice(0, 20);
+  return results.slice(0, 10).map(file => ({
+    type: file.isDirectory ? 'folder' : 'file',
+    title: file.name,
+    description: file.path,
+    path: file.path,
+    action: 'open_file'
+  }));
 }
 
 async function searchDirectory(dir, query, currentDepth, maxDepth) {
@@ -139,22 +206,55 @@ async function searchDirectory(dir, query, currentDepth, maxDepth) {
         });
       }
       
-      if (results.length >= 20) break;
+      if (results.length >= 10) break;
     }
   } catch (e) {
-    // Skip directories we can't read
+    // Skip
   }
   
   return results;
+}
+
+// Search apps
+async function searchApps(query) {
+  const lowerQuery = query.toLowerCase();
+  const filteredApps = database.apps.filter(app => 
+    app.name.toLowerCase().includes(lowerQuery)
+  );
+  
+  return filteredApps.map(app => ({
+    type: 'app',
+    title: app.name,
+    description: app.path,
+    path: app.path,
+    action: 'launch_app'
+  }));
+}
+
+// Combined search
+async function unifiedSearch(query) {
+  const [aiResults, googleResults, fileResults, appResults] = await Promise.all([
+    searchWithAI(query),
+    searchWithGoogle(query),
+    searchLocalFiles(query),
+    searchApps(query)
+  ]);
+  
+  return {
+    ai: aiResults,
+    web: googleResults,
+    files: fileResults,
+    apps: appResults
+  };
 }
 
 function createSidebar() {
   const { height } = screen.getPrimaryDisplay().workAreaSize;
   sidebarWindow = new BrowserWindow({
     width: 56,
-    height: 230,
+    height: 280,
     x: 20,
-    y: Math.round((height - 230) / 2),
+    y: Math.round((height - 280) / 2),
     frame: false,
     transparent: true,
     alwaysOnTop: true,
@@ -351,7 +451,6 @@ function toggleCommand() {
   }
 }
 
-// FIXED: Check if windows exist before sending
 function broadcastUpdate() {
   if (panelWindow && !panelWindow.isDestroyed()) {
     panelWindow.webContents.send('data-updated');
@@ -381,8 +480,7 @@ app.whenReady().then(() => {
     if (settingsWindow && !settingsWindow.isDestroyed()) settingsWindow.close();
   });
   
-  console.log('✅ Gogh Ready - Full System');
-  console.log('Command:', cmdShortcut);
+  console.log('✅ Gogh Ready - AI Integrated');
 });
 
 app.on('will-quit', () => globalShortcut.unregisterAll());
@@ -391,34 +489,37 @@ app.on('window-all-closed', () => {
 });
 
 // IPC Handlers
-ipcMain.handle('open-panel', (_, section) => {
-  createPanel(section);
-  return true;
-});
-
-ipcMain.handle('open-mode-selector', () => {
-  createModeSelector();
-  return true;
-});
-
-ipcMain.handle('open-graph-view', () => {
-  createGraphView();
-  return true;
-});
-
-ipcMain.handle('open-settings', () => {
-  createSettings();
-  return true;
-});
-
+ipcMain.handle('open-panel', (_, section) => { createPanel(section); return true; });
+ipcMain.handle('open-mode-selector', () => { createModeSelector(); return true; });
+ipcMain.handle('open-graph-view', () => { createGraphView(); return true; });
+ipcMain.handle('open-settings', () => { createSettings(); return true; });
 ipcMain.handle('get-data', () => database);
 ipcMain.handle('get-settings', () => settings);
 
+// Unified search
+ipcMain.handle('unified-search', async (_, query) => {
+  return await unifiedSearch(query);
+});
+
+// Execute search result
+ipcMain.handle('execute-result', async (_, result) => {
+  switch (result.action) {
+    case 'open_file':
+      await shell.openPath(result.path);
+      break;
+    case 'launch_app':
+      await shell.openPath(result.path);
+      break;
+    case 'open_url':
+      await shell.openExternal(result.url);
+      break;
+  }
+  return true;
+});
+
 // Settings
 ipcMain.handle('add-search-directory', async () => {
-  const result = await dialog.showOpenDialog({
-    properties: ['openDirectory']
-  });
+  const result = await dialog.showOpenDialog({ properties: ['openDirectory'] });
   if (!result.canceled && result.filePaths.length > 0) {
     settings.searchDirectories.push(result.filePaths[0]);
     saveSettings(settings);
@@ -431,11 +532,6 @@ ipcMain.handle('remove-search-directory', (_, dir) => {
   settings.searchDirectories = settings.searchDirectories.filter(d => d !== dir);
   saveSettings(settings);
   return settings;
-});
-
-// Local search
-ipcMain.handle('search-local', async (_, query) => {
-  return await searchLocalFiles(query);
 });
 
 // File operations
@@ -454,10 +550,7 @@ ipcMain.handle('remove-file', (_, id) => {
 });
 
 ipcMain.handle('open-file', async (_, filePath) => {
-  if (!filePath || filePath === 'undefined') {
-    console.error('Invalid file path');
-    return false;
-  }
+  if (!filePath || filePath === 'undefined') return false;
   try {
     await shell.openPath(filePath);
     return true;
@@ -468,9 +561,7 @@ ipcMain.handle('open-file', async (_, filePath) => {
 });
 
 ipcMain.handle('select-files', async () => {
-  const result = await dialog.showOpenDialog({
-    properties: ['openFile', 'multiSelections']
-  });
+  const result = await dialog.showOpenDialog({ properties: ['openFile', 'multiSelections'] });
   return result.filePaths;
 });
 
@@ -486,9 +577,7 @@ ipcMain.handle('add-bookmark', (_, bookmark) => {
 
 ipcMain.handle('remove-bookmark', (_, id) => {
   const bookmarkFile = path.join(BOOKMARKS_DIR, `${id}.json`);
-  if (fs.existsSync(bookmarkFile)) {
-    fs.unlinkSync(bookmarkFile);
-  }
+  if (fs.existsSync(bookmarkFile)) fs.unlinkSync(bookmarkFile);
   database.bookmarks = database.bookmarks.filter(b => b.id !== id);
   saveDatabase(database);
   broadcastUpdate();
@@ -496,10 +585,7 @@ ipcMain.handle('remove-bookmark', (_, id) => {
 });
 
 ipcMain.handle('open-bookmark', (_, url) => {
-  if (!url || url === 'undefined') {
-    console.error('Invalid URL');
-    return false;
-  }
+  if (!url || url === 'undefined') return false;
   shell.openExternal(url);
   return true;
 });
@@ -520,10 +606,7 @@ ipcMain.handle('remove-app', (_, id) => {
 });
 
 ipcMain.handle('launch-app', async (_, appPath) => {
-  if (!appPath || appPath === 'undefined') {
-    console.error('Invalid app path');
-    return false;
-  }
+  if (!appPath || appPath === 'undefined') return false;
   try {
     await shell.openPath(appPath);
     return true;
@@ -533,7 +616,7 @@ ipcMain.handle('launch-app', async (_, appPath) => {
   }
 });
 
-// Connection operations (for graph)
+// Connection operations
 ipcMain.handle('add-connection', (_, connection) => {
   database.connections.push(connection);
   saveDatabase(database);
@@ -560,6 +643,9 @@ ipcMain.handle('toggle-task', (_, id) => {
   const task = database.tasks.find(t => t.id === id);
   if (task) {
     task.completed = !task.completed;
+    if (task.completed) {
+      task.completedAt = new Date().toISOString();
+    }
     saveDatabase(database);
     broadcastUpdate();
   }
@@ -568,14 +654,6 @@ ipcMain.handle('toggle-task', (_, id) => {
 
 ipcMain.handle('delete-task', (_, id) => {
   database.tasks = database.tasks.filter(t => t.id !== id);
-  saveDatabase(database);
-  broadcastUpdate();
-  return database;
-});
-
-// Event operations
-ipcMain.handle('add-event', (_, evt) => {
-  database.events.push(evt);
   saveDatabase(database);
   broadcastUpdate();
   return database;
