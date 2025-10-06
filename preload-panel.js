@@ -1,6 +1,7 @@
 const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('panelAPI', {
   getData: () => ipcRenderer.invoke('get-data'),
+  parseTask: (text) => ipcRenderer.invoke('parse-task', text),
   addFile: (file) => ipcRenderer.invoke('add-file', file),
   removeFile: (id) => ipcRenderer.invoke('remove-file', id),
   openFile: (path) => ipcRenderer.invoke('open-file', path),

@@ -70,7 +70,6 @@ function loadDatabase() {
   try {
     if (fs.existsSync(DB_PATH)) {
       const data = JSON.parse(fs.readFileSync(DB_PATH, 'utf8'));
-      // Ensure all arrays exist
       if (!data.apps) data.apps = [];
       if (!data.files) data.files = [];
       if (!data.bookmarks) data.bookmarks = [];
@@ -110,6 +109,48 @@ function saveDatabase(data) {
 }
 
 let database = loadDatabase();
+
+// Parse natural language task using Gemini
+async function parseTaskNaturalLanguage(text) {
+  if (!process.env.GEMINI_API_KEY || process.env.GEMINI_API_KEY === 'your_gemini_api_key_here') {
+    return null;
+  }
+  
+  try {
+    const prompt = `Extract task details from this text: "${text}"
+Return ONLY a JSON object with this exact format (no markdown, no extra text):
+{
+  "title": "task title",
+  "startDate": "YYYY-MM-DD",
+  "endDate": "YYYY-MM-DD"
+}
+
+Examples:
+- "Buy groceries tomorrow" -> {"title": "Buy groceries", "startDate": "2025-10-07", "endDate": "2025-10-07"}
+- "Finish project by next Friday" -> {"title": "Finish project", "startDate": "2025-10-06", "endDate": "2025-10-11"}
+- "Call mom in 2 days" -> {"title": "Call mom", "startDate": "2025-10-08", "endDate": "2025-10-08"}
+
+Today is ${new Date().toISOString().split('T')[0]}`;
+
+    const response = await axios.post(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${process.env.GEMINI_API_KEY}`,
+      {
+        contents: [{
+          parts: [{ text: prompt }]
+        }]
+      }
+    );
+    
+    let responseText = response.data.candidates[0].content.parts[0].text;
+    responseText = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
+    
+    const parsed = JSON.parse(responseText);
+    return parsed;
+  } catch (error) {
+    console.error('Task parsing error:', error.message);
+    return null;
+  }
+}
 
 // AI Search
 async function searchWithAI(query) {
@@ -228,7 +269,7 @@ async function searchDirectory(dir, query, currentDepth, maxDepth) {
   return results;
 }
 
-// Search apps - FIXED
+// Search apps
 async function searchApps(query) {
   if (!database || !database.apps || !Array.isArray(database.apps)) {
     return [];
@@ -273,13 +314,17 @@ function createSidebar() {
 
 function createPanel(section) {
   if (panelWindow && currentPanel === section) {
-    panelWindow.close();
+    if (!panelWindow.isDestroyed()) {
+      panelWindow.close();
+    }
     panelWindow = null;
     currentPanel = null;
     return;
   }
   
-  if (panelWindow) panelWindow.close();
+  if (panelWindow && !panelWindow.isDestroyed()) {
+    panelWindow.close();
+  }
   
   const { height } = screen.getPrimaryDisplay().workAreaSize;
   panelWindow = new BrowserWindow({
@@ -316,7 +361,9 @@ function createPanel(section) {
 
 function createModeSelector() {
   if (modeWindow) {
-    modeWindow.close();
+    if (!modeWindow.isDestroyed()) {
+      modeWindow.close();
+    }
     modeWindow = null;
     return;
   }
@@ -347,8 +394,17 @@ function createModeSelector() {
 }
 
 function createGraphView() {
+  // FIXED: Close panel first, check if exists
+  if (panelWindow && !panelWindow.isDestroyed()) {
+    panelWindow.close();
+    panelWindow = null;
+    currentPanel = null;
+  }
+  
   if (graphWindow) {
-    graphWindow.close();
+    if (!graphWindow.isDestroyed()) {
+      graphWindow.close();
+    }
     graphWindow = null;
     return;
   }
@@ -480,7 +536,7 @@ app.whenReady().then(() => {
     if (settingsWindow && !settingsWindow.isDestroyed()) settingsWindow.close();
   });
   
-  console.log('✅ Gogh Ready - AI Integrated');
+  console.log('✅ Gogh Ready');
 });
 
 app.on('will-quit', () => globalShortcut.unregisterAll());
@@ -495,6 +551,11 @@ ipcMain.handle('open-graph-view', () => { createGraphView(); return true; });
 ipcMain.handle('open-settings', () => { createSettings(); return true; });
 ipcMain.handle('get-data', () => database);
 ipcMain.handle('get-settings', () => settings);
+
+// Parse task with AI
+ipcMain.handle('parse-task', async (_, text) => {
+  return await parseTaskNaturalLanguage(text);
+});
 
 // Separate search handlers
 ipcMain.handle('search-ai', async (_, query) => {

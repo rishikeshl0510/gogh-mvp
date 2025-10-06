@@ -124,12 +124,11 @@ function renderTasks(content) {
   
   content.innerHTML = `
     <div class="quick-add">
-      <input type="text" id="taskTitle" class="input" placeholder="Task title...">
-      <div class="input-row">
-        <input type="datetime-local" id="taskStart" class="input input-small" placeholder="Start">
-        <input type="datetime-local" id="taskEnd" class="input input-small" placeholder="End">
-        <button class="btn" onclick="addTask()">+ ADD</button>
+      <div style="background: rgba(100, 150, 255, 0.1); padding: 12px; border-radius: 8px; margin-bottom: 12px; font-size: 11px; color: rgba(255,255,255,0.7);">
+        💡 Type naturally: "Buy groceries tomorrow", "Finish project by Friday", "Call mom in 2 days"
       </div>
+      <input type="text" id="taskInput" class="input" placeholder="What do you need to do? (e.g., Meeting with team next Monday)">
+      <button class="btn" onclick="addTaskNatural()">+ ADD TASK</button>
     </div>
     <div>${active.length ? active.map(t => {
       const now = new Date();
@@ -160,6 +159,14 @@ function renderTasks(content) {
       </div>
     `).join('')}
   `;
+  
+  const input = document.getElementById('taskInput');
+  if (input) {
+    input.focus();
+    input.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') addTaskNatural();
+    });
+  }
 }
 
 function setupDrop() {
@@ -259,29 +266,38 @@ async function removeApp(id) {
   await window.panelAPI.removeApp(id);
 }
 
-async function addTask() {
-  const titleInput = document.getElementById('taskTitle');
-  const startInput = document.getElementById('taskStart');
-  const endInput = document.getElementById('taskEnd');
+async function addTaskNatural() {
+  const input = document.getElementById('taskInput');
+  if (!input || !input.value.trim()) return;
   
-  if (!titleInput.value.trim() || !startInput.value || !endInput.value) {
-    alert('Please fill all fields');
-    return;
+  const text = input.value.trim();
+  input.disabled = true;
+  input.placeholder = 'Processing with AI...';
+  
+  try {
+    const parsed = await window.panelAPI.parseTask(text);
+    
+    if (parsed && parsed.title && parsed.startDate && parsed.endDate) {
+      await window.panelAPI.addTask({
+        id: Date.now(),
+        title: parsed.title,
+        startDate: parsed.startDate,
+        endDate: parsed.endDate,
+        mode: data.currentMode,
+        completed: false,
+        createdAt: new Date().toISOString()
+      });
+      input.value = '';
+    } else {
+      alert('Could not understand the task. Try: "Buy groceries tomorrow" or "Meeting next Friday"');
+    }
+  } catch (error) {
+    alert('AI parsing failed. Check your Gemini API key in .env');
   }
   
-  await window.panelAPI.addTask({
-    id: Date.now(),
-    title: titleInput.value,
-    startDate: startInput.value,
-    endDate: endInput.value,
-    mode: data.currentMode,
-    completed: false,
-    createdAt: new Date().toISOString()
-  });
-  
-  titleInput.value = '';
-  startInput.value = '';
-  endInput.value = '';
+  input.disabled = false;
+  input.placeholder = 'What do you need to do?';
+  input.focus();
 }
 
 async function toggleTask(id) {

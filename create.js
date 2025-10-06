@@ -1,12 +1,10 @@
 const fs = require('fs');
 
-console.log('🔧 Fixing all issues...\n');
+console.log('🔧 Final fixes: Graph + Natural Language Tasks...\n');
 
 const files = {};
 
-// ============================================
-// FIXED MAIN.JS
-// ============================================
+// FIXED MAIN.JS - Check if panel exists before closing
 files['main.js'] = `const { app, BrowserWindow, globalShortcut, screen, ipcMain, Menu, dialog, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
@@ -79,7 +77,6 @@ function loadDatabase() {
   try {
     if (fs.existsSync(DB_PATH)) {
       const data = JSON.parse(fs.readFileSync(DB_PATH, 'utf8'));
-      // Ensure all arrays exist
       if (!data.apps) data.apps = [];
       if (!data.files) data.files = [];
       if (!data.bookmarks) data.bookmarks = [];
@@ -119,6 +116,48 @@ function saveDatabase(data) {
 }
 
 let database = loadDatabase();
+
+// Parse natural language task using Gemini
+async function parseTaskNaturalLanguage(text) {
+  if (!process.env.GEMINI_API_KEY || process.env.GEMINI_API_KEY === 'your_gemini_api_key_here') {
+    return null;
+  }
+  
+  try {
+    const prompt = \`Extract task details from this text: "\${text}"
+Return ONLY a JSON object with this exact format (no markdown, no extra text):
+{
+  "title": "task title",
+  "startDate": "YYYY-MM-DD",
+  "endDate": "YYYY-MM-DD"
+}
+
+Examples:
+- "Buy groceries tomorrow" -> {"title": "Buy groceries", "startDate": "2025-10-07", "endDate": "2025-10-07"}
+- "Finish project by next Friday" -> {"title": "Finish project", "startDate": "2025-10-06", "endDate": "2025-10-11"}
+- "Call mom in 2 days" -> {"title": "Call mom", "startDate": "2025-10-08", "endDate": "2025-10-08"}
+
+Today is \${new Date().toISOString().split('T')[0]}\`;
+
+    const response = await axios.post(
+      \`https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=\${process.env.GEMINI_API_KEY}\`,
+      {
+        contents: [{
+          parts: [{ text: prompt }]
+        }]
+      }
+    );
+    
+    let responseText = response.data.candidates[0].content.parts[0].text;
+    responseText = responseText.replace(/\`\`\`json/g, '').replace(/\`\`\`/g, '').trim();
+    
+    const parsed = JSON.parse(responseText);
+    return parsed;
+  } catch (error) {
+    console.error('Task parsing error:', error.message);
+    return null;
+  }
+}
 
 // AI Search
 async function searchWithAI(query) {
@@ -237,7 +276,7 @@ async function searchDirectory(dir, query, currentDepth, maxDepth) {
   return results;
 }
 
-// Search apps - FIXED
+// Search apps
 async function searchApps(query) {
   if (!database || !database.apps || !Array.isArray(database.apps)) {
     return [];
@@ -282,13 +321,17 @@ function createSidebar() {
 
 function createPanel(section) {
   if (panelWindow && currentPanel === section) {
-    panelWindow.close();
+    if (!panelWindow.isDestroyed()) {
+      panelWindow.close();
+    }
     panelWindow = null;
     currentPanel = null;
     return;
   }
   
-  if (panelWindow) panelWindow.close();
+  if (panelWindow && !panelWindow.isDestroyed()) {
+    panelWindow.close();
+  }
   
   const { height } = screen.getPrimaryDisplay().workAreaSize;
   panelWindow = new BrowserWindow({
@@ -325,7 +368,9 @@ function createPanel(section) {
 
 function createModeSelector() {
   if (modeWindow) {
-    modeWindow.close();
+    if (!modeWindow.isDestroyed()) {
+      modeWindow.close();
+    }
     modeWindow = null;
     return;
   }
@@ -356,8 +401,17 @@ function createModeSelector() {
 }
 
 function createGraphView() {
+  // FIXED: Close panel first, check if exists
+  if (panelWindow && !panelWindow.isDestroyed()) {
+    panelWindow.close();
+    panelWindow = null;
+    currentPanel = null;
+  }
+  
   if (graphWindow) {
-    graphWindow.close();
+    if (!graphWindow.isDestroyed()) {
+      graphWindow.close();
+    }
     graphWindow = null;
     return;
   }
@@ -489,7 +543,7 @@ app.whenReady().then(() => {
     if (settingsWindow && !settingsWindow.isDestroyed()) settingsWindow.close();
   });
   
-  console.log('✅ Gogh Ready - AI Integrated');
+  console.log('✅ Gogh Ready');
 });
 
 app.on('will-quit', () => globalShortcut.unregisterAll());
@@ -504,6 +558,11 @@ ipcMain.handle('open-graph-view', () => { createGraphView(); return true; });
 ipcMain.handle('open-settings', () => { createSettings(); return true; });
 ipcMain.handle('get-data', () => database);
 ipcMain.handle('get-settings', () => settings);
+
+// Parse task with AI
+ipcMain.handle('parse-task', async (_, text) => {
+  return await parseTaskNaturalLanguage(text);
+});
 
 // Separate search handlers
 ipcMain.handle('search-ai', async (_, query) => {
@@ -701,476 +760,358 @@ ipcMain.handle('hide-command', () => {
 });
 `;
 
-// FIXED SIDEBAR.HTML - Reduced spacing
-files['sidebar.html'] = `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="UTF-8">
-  <title>Gogh</title>
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body {
-      font-family: 'Courier New', monospace;
-      background: transparent;
-      overflow: hidden;
-      height: 100vh;
-      -webkit-app-region: drag;
-    }
-    .sidebar {
-      width: 56px;
-      height: 250px;
-      background: rgba(0, 0, 0, 0.75);
-      backdrop-filter: blur(20px) saturate(120%);
-      -webkit-backdrop-filter: blur(20px) saturate(120%);
-      border: 1px solid rgba(255, 255, 255, 0.2);
-      border-radius: 16px;
-      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.1);
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      padding: 12px 0;
-      gap: 2px;
-    }
-    .nav-item {
-      width: 40px;
-      height: 40px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      cursor: pointer;
-      position: relative;
-      transition: all 0.2s;
-      -webkit-app-region: no-drag;
-      border-radius: 8px;
-    }
-    .nav-item:hover { background: rgba(255, 255, 255, 0.08); }
-    .nav-item svg {
-      width: 20px;
-      height: 20px;
-      stroke: #ffffff;
-      stroke-width: 2;
-      filter: drop-shadow(0 0 4px rgba(255, 255, 255, 0.5));
-    }
-    .badge {
-      position: absolute;
-      top: -4px;
-      right: -4px;
-      background: #ffffff;
-      color: #000;
-      padding: 2px 5px;
-      border-radius: 8px;
-      font-size: 9px;
-      font-weight: bold;
-      min-width: 16px;
-      text-align: center;
-      box-shadow: 0 0 8px rgba(255, 255, 255, 0.8);
-    }
-    .divider {
-      width: 30px;
-      height: 1px;
-      background: rgba(255, 255, 255, 0.2);
-      margin: 2px 0;
-    }
-    .settings-btn {
-      width: 40px;
-      height: 40px;
-      cursor: pointer;
-      -webkit-app-region: no-drag;
-      border-radius: 8px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      transition: all 0.2s;
-    }
-    .settings-btn:hover {
-      background: rgba(255, 255, 255, 0.08);
-    }
-    .settings-btn svg {
-      width: 18px;
-      height: 18px;
-      stroke: #ffffff;
-      stroke-width: 2;
-    }
-  </style>
-</head>
-<body>
-  <div class="sidebar">
-    <div class="nav-item" onclick="openPanel('files')" title="Files">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
-        <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/>
-        <polyline points="13 2 13 9 20 9"/>
-      </svg>
-      <span class="badge" id="filesBadge">0</span>
-    </div>
-    
-    <div class="nav-item" onclick="openPanel('tasks')" title="Tasks">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
-        <path d="M9 11l3 3L22 4"/>
-        <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
-      </svg>
-      <span class="badge" id="tasksBadge">0</span>
-    </div>
-    
-    <div class="nav-item" onclick="openGraphView()" title="Knowledge Graph">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
-        <circle cx="12" cy="12" r="2"/>
-        <circle cx="12" cy="5" r="2"/>
-        <circle cx="19" cy="12" r="2"/>
-        <circle cx="5" cy="12" r="2"/>
-        <line x1="12" y1="7" x2="12" y2="10"/>
-        <line x1="14" y1="12" x2="17" y2="12"/>
-        <line x1="7" y1="12" x2="10" y2="12"/>
-      </svg>
-    </div>
-    
-    <div class="divider"></div>
-    
-    <div class="nav-item" onclick="openModeSelector()" title="Switch Mode">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
-        <circle cx="12" cy="12" r="3"/>
-        <path d="M12 1v6m0 6v6M1 12h6m6 0h6"/>
-      </svg>
-    </div>
-    
-    <div class="settings-btn" onclick="openSettings()" title="Settings">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
-        <circle cx="12" cy="12" r="3"/>
-        <path d="M12 1v6m0 6v6m8.66-15L15.5 8.5m-7 7L3.34 20.66M23 12h-6m-6 0H1m20.66-8.66L15.5 15.5m-7 7L3.34 3.34"/>
-      </svg>
-    </div>
-  </div>
-  <script src="renderer-sidebar.js"></script>
-</body>
-</html>`;
-
-// FIXED COMMAND HTML - Separate search categories
-files['command.html'] = `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="UTF-8">
-  <title>Command</title>
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body {
-      font-family: 'Courier New', monospace;
-      background: transparent;
-      overflow: hidden;
-      display: flex;
-      align-items: flex-start;
-      justify-content: center;
-      padding: 20px;
-      -webkit-app-region: drag;
-    }
-    .palette {
-      width: 700px;
-      background: rgba(0, 0, 0, 0.90);
-      backdrop-filter: blur(20px) saturate(120%);
-      border: 1px solid rgba(255, 255, 255, 0.2);
-      border-radius: 14px;
-      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.7);
-      overflow: hidden;
-    }
-    .input-wrap {
-      display: flex;
-      align-items: center;
-      padding: 20px 24px;
-      border-bottom: 1px solid rgba(255, 255, 255, 0.2);
-      -webkit-app-region: no-drag;
-    }
-    .prompt {
-      color: #ffffff;
-      font-weight: bold;
-      margin-right: 10px;
-      text-shadow: 0 0 8px rgba(255, 255, 255, 0.5);
-    }
-    input {
-      flex: 1;
-      background: transparent;
-      border: none;
-      color: #ffffff;
-      font-size: 16px;
-      font-family: 'Courier New', monospace;
-      outline: none;
-    }
-    input::placeholder { color: rgba(255, 255, 255, 0.4); }
-    
-    .search-tabs {
-      display: flex;
-      padding: 12px 24px;
-      gap: 8px;
-      border-bottom: 1px solid rgba(255, 255, 255, 0.2);
-      -webkit-app-region: no-drag;
-    }
-    .search-tab {
-      padding: 6px 14px;
-      background: rgba(255, 255, 255, 0.06);
-      border: 1px solid rgba(255, 255, 255, 0.15);
-      border-radius: 6px;
-      font-size: 11px;
-      cursor: pointer;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-      transition: all 0.2s;
-    }
-    .search-tab:hover { background: rgba(255, 255, 255, 0.1); }
-    .search-tab.active {
-      background: #ffffff;
-      color: #000;
-      box-shadow: 0 0 10px rgba(255, 255, 255, 0.3);
-    }
-    
-    .results-container {
-      max-height: 400px;
-      overflow-y: auto;
-      padding: 8px;
-    }
-    .results-container::-webkit-scrollbar { width: 6px; }
-    .results-container::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.2); }
-    
-    .item {
-      display: flex;
-      align-items: center;
-      gap: 14px;
-      padding: 12px 16px;
-      border-radius: 8px;
-      cursor: pointer;
-      margin: 4px 0;
-      transition: all 0.15s;
-      border: 1px solid transparent;
-    }
-    .item:hover, .item.selected {
-      background: rgba(255, 255, 255, 0.08);
-      border-color: rgba(255, 255, 255, 0.2);
-    }
-    .item-icon {
-      width: 36px;
-      height: 36px;
-      background: rgba(255, 255, 255, 0.1);
-      border: 1px solid rgba(255, 255, 255, 0.2);
-      border-radius: 8px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      flex-shrink: 0;
-      font-size: 18px;
-    }
-    .item-content {
-      flex: 1;
-      min-width: 0;
-    }
-    .item-title {
-      font-size: 14px;
-      font-weight: 500;
-      color: #ffffff;
-      margin-bottom: 3px;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-    .item-desc {
-      font-size: 11px;
-      color: rgba(255, 255, 255, 0.6);
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-    .loading {
-      padding: 40px 20px;
-      text-align: center;
-      color: rgba(255, 255, 255, 0.5);
-      font-size: 13px;
-    }
-    .hidden { display: none !important; }
-  </style>
-</head>
-<body>
-  <div class="palette">
-    <div class="input-wrap">
-      <span class="prompt">></span>
-      <input id="input" placeholder="search..." autocomplete="off">
-    </div>
-    <div class="search-tabs">
-      <div class="search-tab active" data-type="local" onclick="switchSearchType('local')">Local</div>
-      <div class="search-tab" data-type="ai" onclick="switchSearchType('ai')">AI</div>
-      <div class="search-tab" data-type="google" onclick="switchSearchType('google')">Google</div>
-    </div>
-    <div id="results" class="results-container hidden"></div>
-    <div id="loading" class="loading hidden">Searching...</div>
-  </div>
-  <script src="renderer-command.js"></script>
-</body>
-</html>`;
-
-// FIXED PRELOAD-COMMAND.JS
-files['preload-command.js'] = `const { contextBridge, ipcRenderer } = require('electron');
-contextBridge.exposeInMainWorld('commandAPI', {
-  hide: () => ipcRenderer.invoke('hide-command'),
-  searchAI: (query) => ipcRenderer.invoke('search-ai', query),
-  searchGoogle: (query) => ipcRenderer.invoke('search-google', query),
-  searchLocal: (query) => ipcRenderer.invoke('search-local', query),
-  executeResult: (result) => ipcRenderer.invoke('execute-result', result)
+// FIXED PRELOAD-PANEL.JS - Add parseTask
+files['preload-panel.js'] = `const { contextBridge, ipcRenderer } = require('electron');
+contextBridge.exposeInMainWorld('panelAPI', {
+  getData: () => ipcRenderer.invoke('get-data'),
+  parseTask: (text) => ipcRenderer.invoke('parse-task', text),
+  addFile: (file) => ipcRenderer.invoke('add-file', file),
+  removeFile: (id) => ipcRenderer.invoke('remove-file', id),
+  openFile: (path) => ipcRenderer.invoke('open-file', path),
+  selectFiles: () => ipcRenderer.invoke('select-files'),
+  addBookmark: (bookmark) => ipcRenderer.invoke('add-bookmark', bookmark),
+  removeBookmark: (id) => ipcRenderer.invoke('remove-bookmark', id),
+  openBookmark: (url) => ipcRenderer.invoke('open-bookmark', url),
+  addApp: (app) => ipcRenderer.invoke('add-app', app),
+  removeApp: (id) => ipcRenderer.invoke('remove-app', id),
+  launchApp: (path) => ipcRenderer.invoke('launch-app', path),
+  addTask: (task) => ipcRenderer.invoke('add-task', task),
+  toggleTask: (id) => ipcRenderer.invoke('toggle-task', id),
+  deleteTask: (id) => ipcRenderer.invoke('delete-task', id),
+  switchMode: (id) => ipcRenderer.invoke('switch-mode', id),
+  openModeSelector: () => ipcRenderer.invoke('open-mode-selector'),
+  onSetPanel: (callback) => ipcRenderer.on('set-panel', (_, section) => callback(section)),
+  onDataUpdated: (callback) => ipcRenderer.on('data-updated', callback)
 });`;
 
-// FIXED RENDERER-COMMAND.JS
-files['renderer-command.js'] = `const input = document.getElementById('input');
-const resultsContainer = document.getElementById('results');
-const loading = document.getElementById('loading');
+// UPDATED RENDERER-PANEL.JS - Natural language task input
+files['renderer-panel.js'] = `let data = null;
+let currentSection = null;
+let currentTab = 'files';
 
-let currentSearchType = 'local';
-let allResults = [];
-let selectedIndex = -1;
-let searchTimer = null;
-
-input.focus();
-
-function switchSearchType(type) {
-  currentSearchType = type;
-  document.querySelectorAll('.search-tab').forEach(tab => {
-    tab.classList.toggle('active', tab.dataset.type === type);
+async function init() {
+  data = await window.panelAPI.getData();
+  
+  window.panelAPI.onSetPanel(async (section) => {
+    currentSection = section;
+    data = await window.panelAPI.getData();
+    render();
   });
   
-  if (input.value.trim()) {
-    performSearch(input.value.trim());
+  window.panelAPI.onDataUpdated(async () => {
+    data = await window.panelAPI.getData();
+    render();
+  });
+}
+
+function render() {
+  document.getElementById('panelTitle').textContent = currentSection.toUpperCase();
+  
+  const currentMode = data.modes.find(m => m.id === data.currentMode);
+  document.getElementById('modeIndicator').textContent = currentMode ? currentMode.name : 'Work';
+  
+  const content = document.getElementById('panelContent');
+  
+  if (currentSection === 'files') {
+    renderFilesSection();
+  } else if (currentSection === 'tasks') {
+    renderTasks(content);
   }
 }
 
-input.addEventListener('input', (e) => {
-  const query = e.target.value.trim();
-  
-  if (!query) {
-    resultsContainer.classList.add('hidden');
-    loading.classList.add('hidden');
-    return;
-  }
-  
-  resultsContainer.classList.add('hidden');
-  loading.classList.remove('hidden');
-  
-  clearTimeout(searchTimer);
-  searchTimer = setTimeout(() => {
-    performSearch(query);
-  }, 300);
-});
-
-async function performSearch(query) {
-  try {
-    allResults = [];
-    
-    if (currentSearchType === 'local') {
-      const localResults = await window.commandAPI.searchLocal(query);
-      allResults = [...localResults.files, ...localResults.apps];
-    } else if (currentSearchType === 'ai') {
-      allResults = await window.commandAPI.searchAI(query);
-    } else if (currentSearchType === 'google') {
-      allResults = await window.commandAPI.searchGoogle(query);
-    }
-    
-    showResults();
-  } catch (error) {
-    console.error('Search error:', error);
-    loading.classList.add('hidden');
-  }
+function openModeSelector() {
+  window.panelAPI.openModeSelector();
 }
 
-function showResults() {
-  loading.classList.add('hidden');
+function renderFilesSection() {
+  const tabsContainer = document.getElementById('tabsContainer');
+  tabsContainer.classList.remove('hidden');
+  tabsContainer.innerHTML = \`
+    <div class="tab \${currentTab === 'files' ? 'active' : ''}" onclick="switchTab('files')">Files</div>
+    <div class="tab \${currentTab === 'bookmarks' ? 'active' : ''}" onclick="switchTab('bookmarks')">Bookmarks</div>
+    <div class="tab \${currentTab === 'apps' ? 'active' : ''}" onclick="switchTab('apps')">Apps</div>
+  \`;
   
-  if (!allResults || allResults.length === 0) {
-    resultsContainer.innerHTML = '<div class="loading">No results found</div>';
-    resultsContainer.classList.remove('hidden');
-    return;
-  }
-  
-  let html = '';
-  allResults.forEach((item, i) => {
-    const icons = {
-      'ai': '🤖',
-      'web': '🌐',
-      'file': '📄',
-      'folder': '📁',
-      'app': '⚡'
-    };
-    const icon = icons[item.type] || '📄';
-    
-    html += \`
-      <div class="item" data-index="\${i}">
-        <div class="item-icon">\${icon}</div>
-        <div class="item-content">
-          <div class="item-title">\${item.title}</div>
-          <div class="item-desc">\${item.description || ''}</div>
+  const content = document.getElementById('panelContent');
+  if (currentTab === 'files') renderFiles(content);
+  else if (currentTab === 'bookmarks') renderBookmarks(content);
+  else if (currentTab === 'apps') renderApps(content);
+}
+
+function switchTab(tab) {
+  currentTab = tab;
+  renderFilesSection();
+}
+
+function renderFiles(content) {
+  const filtered = data.files.filter(f => f.mode === data.currentMode);
+  content.innerHTML = \`
+    <div class="drop-zone" id="drop">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+        <path d="M21 10c0-1.1-.9-2-2-2h-6.5l-2-2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V10z"/>
+        <line x1="12" y1="13" x2="12" y2="19"/>
+        <line x1="9" y1="16" x2="15" y2="16"/>
+      </svg>
+      Drop files here
+    </div>
+    <div>\${filtered.length ? filtered.map(f => \`
+      <div class="file-item" onclick="openFile('\${f.path.replace(/\\\\/g, '\\\\\\\\')}')">
+        <span class="file-icon">📄</span>
+        <div class="file-info">
+          <div class="file-name">\${f.name}</div>
         </div>
+        <div class="file-delete" onclick="event.stopPropagation();removeFile('\${f.id}')">×</div>
       </div>
-    \`;
-  });
-  
-  resultsContainer.innerHTML = html;
-  resultsContainer.classList.remove('hidden');
-  selectedIndex = 0;
-  updateSelection();
-  
-  document.querySelectorAll('.item').forEach((el, i) => {
-    el.onclick = () => {
-      selectedIndex = i;
-      executeSelected();
-    };
-  });
+    \`).join('') : '<div class="empty">NO FILES</div>'}</div>
+    <button class="btn" onclick="addFiles()">+ ADD FILES</button>
+  \`;
+  setupDrop();
 }
 
-input.addEventListener('keydown', (e) => {
-  if (e.key === 'ArrowDown') {
-    e.preventDefault();
-    selectNext();
-  } else if (e.key === 'ArrowUp') {
-    e.preventDefault();
-    selectPrev();
-  } else if (e.key === 'Enter') {
-    e.preventDefault();
-    executeSelected();
-  } else if (e.key === 'Escape') {
-    window.commandAPI.hide();
+function renderBookmarks(content) {
+  const filtered = data.bookmarks.filter(b => b.mode === data.currentMode);
+  content.innerHTML = \`
+    <div class="quick-add">
+      <input type="text" id="bookmarkUrl" class="input" placeholder="Paste URL (https://...)">
+      <button class="btn" onclick="addBookmark()">+ ADD</button>
+    </div>
+    <div>\${filtered.length ? filtered.map(b => \`
+      <div class="file-item" onclick="openBookmark('\${b.url}')">
+        <span class="file-icon">🔖</span>
+        <div class="file-info">
+          <div class="file-name">\${b.name || b.url}</div>
+        </div>
+        <div class="file-delete" onclick="event.stopPropagation();removeBookmark('\${b.id}')">×</div>
+      </div>
+    \`).join('') : '<div class="empty">NO BOOKMARKS</div>'}</div>
+  \`;
+}
+
+function renderApps(content) {
+  const filtered = data.apps.filter(a => a.mode === data.currentMode);
+  content.innerHTML = \`
+    <button class="btn" onclick="addApp()" style="margin-bottom:20px">+ ADD APP</button>
+    <div>\${filtered.length ? filtered.map(a => \`
+      <div class="file-item" onclick="launchApp('\${a.path.replace(/\\\\/g, '\\\\\\\\')}')">
+        <span class="file-icon">⚡</span>
+        <div class="file-info">
+          <div class="file-name">\${a.name}</div>
+        </div>
+        <div class="file-delete" onclick="event.stopPropagation();removeApp('\${a.id}')">×</div>
+      </div>
+    \`).join('') : '<div class="empty">NO APPS</div>'}</div>
+  \`;
+}
+
+function renderTasks(content) {
+  document.getElementById('tabsContainer').classList.add('hidden');
+  const filtered = data.tasks.filter(t => t.mode === data.currentMode);
+  const active = filtered.filter(t => !t.completed);
+  const completed = filtered.filter(t => t.completed);
+  
+  content.innerHTML = \`
+    <div class="quick-add">
+      <div style="background: rgba(100, 150, 255, 0.1); padding: 12px; border-radius: 8px; margin-bottom: 12px; font-size: 11px; color: rgba(255,255,255,0.7);">
+        💡 Type naturally: "Buy groceries tomorrow", "Finish project by Friday", "Call mom in 2 days"
+      </div>
+      <input type="text" id="taskInput" class="input" placeholder="What do you need to do? (e.g., Meeting with team next Monday)">
+      <button class="btn" onclick="addTaskNatural()">+ ADD TASK</button>
+    </div>
+    <div>\${active.length ? active.map(t => {
+      const now = new Date();
+      const end = new Date(t.endDate);
+      const daysLeft = Math.ceil((end - now) / (1000 * 60 * 60 * 24));
+      const dueDateText = daysLeft > 0 ? \`\${daysLeft}d left\` : daysLeft === 0 ? 'Today' : 'Overdue';
+      
+      return \`
+        <div class="file-item">
+          <span onclick="toggleTask('\${t.id}')" style="cursor:pointer;font-size:20px">☐</span>
+          <div class="file-info">
+            <div class="file-name">\${t.title}</div>
+            <div class="file-meta">\${new Date(t.startDate).toLocaleDateString()} - \${new Date(t.endDate).toLocaleDateString()} • \${dueDateText}</div>
+          </div>
+          <div class="file-delete" onclick="deleteTask('\${t.id}')">×</div>
+        </div>
+      \`;
+    }).join('') : '<div class="empty">NO ACTIVE TASKS</div>'}</div>
+    \${completed.length ? '<div style="margin-top:20px;padding-top:20px;border-top:1px solid rgba(255,255,255,0.2)"></div>' : ''}
+    \${completed.map(t => \`
+      <div class="file-item" style="opacity:0.5">
+        <span onclick="toggleTask('\${t.id}')" style="cursor:pointer;font-size:20px">☑</span>
+        <div class="file-info">
+          <div class="file-name" style="text-decoration:line-through">\${t.title}</div>
+          <div class="file-meta">Completed \${new Date(t.completedAt).toLocaleDateString()}</div>
+        </div>
+        <div class="file-delete" onclick="deleteTask('\${t.id}')">×</div>
+      </div>
+    \`).join('')}
+  \`;
+  
+  const input = document.getElementById('taskInput');
+  if (input) {
+    input.focus();
+    input.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') addTaskNatural();
+    });
   }
-});
-
-function selectNext() {
-  if (allResults.length === 0) return;
-  selectedIndex = (selectedIndex + 1) % allResults.length;
-  updateSelection();
 }
 
-function selectPrev() {
-  if (allResults.length === 0) return;
-  selectedIndex = selectedIndex <= 0 ? allResults.length - 1 : selectedIndex - 1;
-  updateSelection();
-}
-
-function updateSelection() {
-  document.querySelectorAll('.item').forEach((el, i) => {
-    el.classList.toggle('selected', i === selectedIndex);
-    if (i === selectedIndex) {
-      el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+function setupDrop() {
+  const zone = document.getElementById('drop');
+  if (!zone) return;
+  
+  zone.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    zone.classList.add('drag-over');
+  });
+  
+  zone.addEventListener('dragleave', () => {
+    zone.classList.remove('drag-over');
+  });
+  
+  zone.addEventListener('drop', async (e) => {
+    e.preventDefault();
+    zone.classList.remove('drag-over');
+    
+    for (const file of Array.from(e.dataTransfer.files)) {
+      await window.panelAPI.addFile({
+        id: Date.now() + Math.random(),
+        name: file.name,
+        path: file.path,
+        mode: data.currentMode,
+        date: new Date().toISOString()
+      });
     }
   });
 }
 
-async function executeSelected() {
-  if (selectedIndex >= 0 && allResults[selectedIndex]) {
-    await window.commandAPI.executeResult(allResults[selectedIndex]);
-    window.commandAPI.hide();
+async function addFiles() {
+  const paths = await window.panelAPI.selectFiles();
+  for (const p of paths) {
+    await window.panelAPI.addFile({
+      id: Date.now() + Math.random(),
+      name: p.split(/[\\\\\\/]/).pop(),
+      path: p,
+      mode: data.currentMode,
+      date: new Date().toISOString()
+    });
   }
-}`;
+}
 
-// Write all files
+async function openFile(filePath) {
+  if (!filePath || filePath === 'undefined') {
+    alert('File path is missing');
+    return;
+  }
+  await window.panelAPI.openFile(filePath);
+}
+
+async function removeFile(id) {
+  await window.panelAPI.removeFile(id);
+}
+
+async function addBookmark() {
+  const urlInput = document.getElementById('bookmarkUrl');
+  const url = urlInput.value.trim();
+  if (!url) return;
+  
+  await window.panelAPI.addBookmark({
+    id: Date.now(),
+    name: url,
+    url: url,
+    mode: data.currentMode,
+    date: new Date().toISOString()
+  });
+  urlInput.value = '';
+}
+
+async function openBookmark(url) {
+  await window.panelAPI.openBookmark(url);
+}
+
+async function removeBookmark(id) {
+  await window.panelAPI.removeBookmark(id);
+}
+
+async function addApp() {
+  const paths = await window.panelAPI.selectFiles();
+  if (paths.length > 0) {
+    await window.panelAPI.addApp({
+      id: Date.now(),
+      name: paths[0].split(/[\\\\\\/]/).pop(),
+      path: paths[0],
+      mode: data.currentMode
+    });
+  }
+}
+
+async function launchApp(appPath) {
+  await window.panelAPI.launchApp(appPath);
+}
+
+async function removeApp(id) {
+  await window.panelAPI.removeApp(id);
+}
+
+async function addTaskNatural() {
+  const input = document.getElementById('taskInput');
+  if (!input || !input.value.trim()) return;
+  
+  const text = input.value.trim();
+  input.disabled = true;
+  input.placeholder = 'Processing with AI...';
+  
+  try {
+    const parsed = await window.panelAPI.parseTask(text);
+    
+    if (parsed && parsed.title && parsed.startDate && parsed.endDate) {
+      await window.panelAPI.addTask({
+        id: Date.now(),
+        title: parsed.title,
+        startDate: parsed.startDate,
+        endDate: parsed.endDate,
+        mode: data.currentMode,
+        completed: false,
+        createdAt: new Date().toISOString()
+      });
+      input.value = '';
+    } else {
+      alert('Could not understand the task. Try: "Buy groceries tomorrow" or "Meeting next Friday"');
+    }
+  } catch (error) {
+    alert('AI parsing failed. Check your Gemini API key in .env');
+  }
+  
+  input.disabled = false;
+  input.placeholder = 'What do you need to do?';
+  input.focus();
+}
+
+async function toggleTask(id) {
+  await window.panelAPI.toggleTask(id);
+}
+
+async function deleteTask(id) {
+  await window.panelAPI.deleteTask(id);
+}
+
+init();`;
+
+// Write files
 console.log('Writing fixed files...\n');
 Object.entries(files).forEach(([filename, content]) => {
   fs.writeFileSync(filename, content);
   console.log(`✓ ${filename}`);
 });
 
-console.log('\n✅ All issues fixed!');
+console.log('\n✅ All fixed!');
 console.log('\n🔧 Fixed:');
-console.log('  • Apps filter undefined error');
-console.log('  • Badge counts now update properly');
-console.log('  • Knowledge graph shows existing data');
-console.log('  • Reduced spacing between mode and settings');
-console.log('  • Separate search tabs: Local | AI | Google');
+console.log('  • Graph view "object destroyed" error');
+console.log('  • Graph closes panel properly before opening');
+console.log('  • Natural language task creation with Gemini');
+console.log('  • Simple text input: "Buy groceries tomorrow"');
+console.log('\n💡 Examples:');
+console.log('  • "Meeting with team next Monday"');
+console.log('  • "Call mom in 2 days"');
+console.log('  • "Finish project by Friday"');
 console.log('\n▶️  Run: npm start');
