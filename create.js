@@ -1,1117 +1,767 @@
+#!/usr/bin/env node
+
 const fs = require('fs');
-
-console.log('🔧 Final fixes: Graph + Natural Language Tasks...\n');
-
-const files = {};
-
-// FIXED MAIN.JS - Check if panel exists before closing
-files['main.js'] = `const { app, BrowserWindow, globalShortcut, screen, ipcMain, Menu, dialog, shell } = require('electron');
 const path = require('path');
-const fs = require('fs');
-const os = require('os');
-const axios = require('axios');
-require('dotenv').config();
 
-let sidebarWindow = null;
-let panelWindow = null;
-let modeWindow = null;
-let commandWindow = null;
-let graphWindow = null;
-let settingsWindow = null;
-let currentPanel = null;
+console.log('🎨 Creating CRT-style UI...\n');
 
-const DB_PATH = path.join(app.getPath('userData'), 'gogh-data.json');
-const BOOKMARKS_DIR = path.join(app.getPath('userData'), 'bookmarks');
-const SETTINGS_PATH = path.join(app.getPath('userData'), 'settings.json');
+// ============================================
+// CREATE CRT-STYLE COMMAND.HTML
+// ============================================
 
-Menu.setApplicationMenu(null);
-
-if (!fs.existsSync(BOOKMARKS_DIR)) {
-  fs.mkdirSync(BOOKMARKS_DIR, { recursive: true });
-}
-
-function loadSettings() {
-  try {
-    if (fs.existsSync(SETTINGS_PATH)) {
-      return JSON.parse(fs.readFileSync(SETTINGS_PATH, 'utf8'));
+const crtHtml = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
     }
-  } catch (e) {
-    console.error('Settings load error:', e);
-  }
-  
-  const homeDir = os.homedir();
-  let searchDirs = [];
-  
-  if (process.platform === 'darwin') {
-    searchDirs = [
-      path.join(homeDir, 'Documents'),
-      path.join(homeDir, 'Desktop'),
-      path.join(homeDir, 'Downloads')
-    ];
-  } else if (process.platform === 'win32') {
-    searchDirs = [
-      path.join(homeDir, 'Documents'),
-      path.join(homeDir, 'Desktop'),
-      path.join(homeDir, 'Downloads')
-    ];
-  } else {
-    searchDirs = [homeDir];
-  }
-  
-  return { searchDirectories: searchDirs };
-}
 
-function saveSettings(settings) {
-  try {
-    fs.writeFileSync(SETTINGS_PATH, JSON.stringify(settings, null, 2));
-    return true;
-  } catch (e) {
-    console.error('Settings save error:', e);
-    return false;
-  }
-}
-
-let settings = loadSettings();
-
-function loadDatabase() {
-  try {
-    if (fs.existsSync(DB_PATH)) {
-      const data = JSON.parse(fs.readFileSync(DB_PATH, 'utf8'));
-      if (!data.apps) data.apps = [];
-      if (!data.files) data.files = [];
-      if (!data.bookmarks) data.bookmarks = [];
-      if (!data.tasks) data.tasks = [];
-      if (!data.events) data.events = [];
-      if (!data.connections) data.connections = [];
-      if (!data.modes) data.modes = [{ id: 'default', name: 'Work', color: '#ffffff' }];
-      if (!data.currentMode) data.currentMode = 'default';
-      return data;
+    body {
+      font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
+      background: transparent;
+      color: white;
+      overflow: hidden;
     }
-  } catch (e) {
-    console.error('DB load error:', e);
+
+    .container {
+      width: 700px;
+      height: 520px;
+      background: rgba(10, 10, 10, 0.95);
+      backdrop-filter: blur(40px) saturate(150%);
+      border-radius: 16px;
+      box-shadow: 
+        0 0 80px rgba(255, 255, 255, 0.15),
+        0 0 40px rgba(255, 255, 255, 0.1),
+        0 20px 60px rgba(0, 0, 0, 0.5),
+        inset 0 0 100px rgba(255, 255, 255, 0.02);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      position: relative;
+    }
+
+    /* CRT Scanline effect */
+    .container::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: repeating-linear-gradient(
+        0deg,
+        rgba(255, 255, 255, 0.03) 0px,
+        transparent 1px,
+        transparent 2px
+      );
+      pointer-events: none;
+      z-index: 1000;
+    }
+
+    /* CRT Glow effect */
+    .container::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: radial-gradient(
+        ellipse at center,
+        rgba(255, 255, 255, 0.08) 0%,
+        transparent 70%
+      );
+      pointer-events: none;
+      z-index: 999;
+    }
+
+    .search-header {
+      padding: 16px 20px 12px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      position: relative;
+      z-index: 10;
+    }
+
+    .search-title {
+      font-size: 11px;
+      color: rgba(255, 255, 255, 0.4);
+      font-weight: 600;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+    }
+
+    .ai-toggle-container {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .toggle-label {
+      color: rgba(255, 255, 255, 0.5);
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+    }
+
+    /* CRT-style toggle switch */
+    .toggle-switch {
+      position: relative;
+      display: inline-block;
+      width: 44px;
+      height: 24px;
+    }
+
+    .toggle-switch input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+
+    .toggle-slider {
+      position: absolute;
+      cursor: pointer;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-color: rgba(255, 255, 255, 0.08);
+      transition: 0.3s;
+      border-radius: 24px;
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      box-shadow: 
+        0 0 20px rgba(255, 255, 255, 0.05),
+        inset 0 0 10px rgba(0, 0, 0, 0.3);
+    }
+
+    .toggle-slider:before {
+      position: absolute;
+      content: "";
+      height: 16px;
+      width: 16px;
+      left: 3px;
+      bottom: 3px;
+      background-color: rgba(255, 255, 255, 0.3);
+      transition: 0.3s;
+      border-radius: 50%;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.4);
+    }
+
+    input:checked + .toggle-slider {
+      background-color: rgba(255, 255, 255, 0.15);
+      border-color: rgba(255, 255, 255, 0.4);
+      box-shadow: 
+        0 0 30px rgba(255, 255, 255, 0.2),
+        0 0 15px rgba(255, 255, 255, 0.1),
+        inset 0 0 20px rgba(255, 255, 255, 0.05);
+    }
+
+    input:checked + .toggle-slider:before {
+      transform: translateX(20px);
+      background-color: white;
+      box-shadow: 
+        0 0 20px rgba(255, 255, 255, 0.6),
+        0 0 10px rgba(255, 255, 255, 0.4),
+        0 2px 4px rgba(0, 0, 0, 0.4);
+    }
+
+    .search-input {
+      padding: 16px 20px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      position: relative;
+      z-index: 10;
+    }
+
+    #input {
+      width: 100%;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      outline: none;
+      color: white;
+      font-size: 15px;
+      padding: 12px 16px;
+      border-radius: 10px;
+      font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
+      box-shadow: 
+        0 0 20px rgba(255, 255, 255, 0.05),
+        inset 0 0 20px rgba(0, 0, 0, 0.2);
+      transition: all 0.3s ease;
+    }
+
+    #input:focus {
+      background: rgba(255, 255, 255, 0.08);
+      border-color: rgba(255, 255, 255, 0.25);
+      box-shadow: 
+        0 0 30px rgba(255, 255, 255, 0.1),
+        0 0 15px rgba(255, 255, 255, 0.05),
+        inset 0 0 20px rgba(0, 0, 0, 0.2);
+    }
+
+    #input::placeholder {
+      color: rgba(255, 255, 255, 0.25);
+    }
+
+    #loading {
+      padding: 12px 20px;
+      color: rgba(255, 255, 255, 0.4);
+      font-size: 12px;
+      text-align: center;
+      position: relative;
+      z-index: 10;
+    }
+
+    #results {
+      flex: 1;
+      overflow-y: auto;
+      position: relative;
+      z-index: 10;
+    }
+
+    #results::-webkit-scrollbar {
+      width: 8px;
+    }
+
+    #results::-webkit-scrollbar-track {
+      background: rgba(255, 255, 255, 0.02);
+    }
+
+    #results::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.15);
+      border-radius: 4px;
+    }
+
+    #results::-webkit-scrollbar-thumb:hover {
+      background: rgba(255, 255, 255, 0.25);
+    }
+
+    .hidden {
+      display: none !important;
+    }
+
+    .no-results {
+      padding: 60px 20px;
+      text-align: center;
+      color: rgba(255, 255, 255, 0.3);
+      font-size: 13px;
+      letter-spacing: 0.5px;
+    }
+
+    .category-header {
+      padding: 14px 20px 8px;
+      color: rgba(255, 255, 255, 0.35);
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 1.5px;
+      background: rgba(0, 0, 0, 0.2);
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    }
+
+    .result-item {
+      display: flex;
+      align-items: center;
+      padding: 14px 20px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      border-left: 2px solid transparent;
+      position: relative;
+    }
+
+    .result-item::before {
+      content: '';
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 0;
+      height: 100%;
+      background: linear-gradient(90deg, rgba(255, 255, 255, 0.08), transparent);
+      transition: width 0.3s ease;
+    }
+
+    .result-item:hover::before {
+      width: 100%;
+    }
+
+    .result-item:hover {
+      background: rgba(255, 255, 255, 0.03);
+      border-left-color: rgba(255, 255, 255, 0.4);
+      box-shadow: 
+        0 0 20px rgba(255, 255, 255, 0.05),
+        inset 0 0 20px rgba(255, 255, 255, 0.02);
+    }
+
+    .result-item.selected {
+      background: rgba(255, 255, 255, 0.06);
+      border-left-color: white;
+      box-shadow: 
+        0 0 30px rgba(255, 255, 255, 0.08),
+        inset 0 0 30px rgba(255, 255, 255, 0.03);
+    }
+
+    .result-icon {
+      width: 36px;
+      height: 36px;
+      margin-right: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+      flex-shrink: 0;
+      background: rgba(255, 255, 255, 0.06);
+      border-radius: 8px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      box-shadow: 
+        0 0 15px rgba(255, 255, 255, 0.03),
+        inset 0 0 10px rgba(0, 0, 0, 0.2);
+    }
+
+    .result-icon img {
+      width: 28px;
+      height: 28px;
+      object-fit: contain;
+      border-radius: 6px;
+    }
+
+    .result-content {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .result-title {
+      color: rgba(255, 255, 255, 0.9);
+      font-size: 13px;
+      font-weight: 500;
+      margin-bottom: 3px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      letter-spacing: 0.3px;
+    }
+
+    .result-description {
+      color: rgba(255, 255, 255, 0.35);
+      font-size: 11px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    #debug-panel {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: 150px;
+      background: rgba(0,0,0,0.95);
+      color: #0f0;
+      font-family: 'Courier New', monospace;
+      font-size: 11px;
+      padding: 8px;
+      overflow-y: auto;
+      border-top: 1px solid #0f0;
+      display: none;
+      z-index: 1000;
+    }
+
+    #debug-panel::-webkit-scrollbar {
+      width: 6px;
+    }
+
+    #debug-panel::-webkit-scrollbar-thumb {
+      background: #0f0;
+      border-radius: 3px;
+    }
+
+    .debug-header {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 4px;
+      padding-bottom: 4px;
+      border-bottom: 1px solid #0f0;
+    }
+
+    .debug-title {
+      color: #0ff;
+      font-weight: bold;
+    }
+
+    .debug-close {
+      background: transparent;
+      border: 1px solid #0f0;
+      color: #0f0;
+      padding: 2px 8px;
+      cursor: pointer;
+      font-size: 10px;
+    }
+
+    .debug-close:hover {
+      background: #0f0;
+      color: #000;
+    }
+
+    #debug-toggle {
+      position: fixed;
+      bottom: 8px;
+      right: 8px;
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      background: rgba(0,255,0,0.2);
+      border: 1px solid #0f0;
+      color: #0f0;
+      cursor: pointer;
+      font-size: 14px;
+      z-index: 10000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: monospace;
+    }
+
+    #debug-toggle:hover {
+      background: rgba(0,255,0,0.3);
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="search-header">
+      <div class="search-title">Command Palette</div>
+      <div class="ai-toggle-container">
+        <label class="toggle-switch">
+          <input type="checkbox" id="ai-toggle">
+          <span class="toggle-slider"></span>
+        </label>
+        <span class="toggle-label">AI</span>
+      </div>
+    </div>
+
+    <div class="search-input">
+      <input type="text" id="input" placeholder="Search apps, files..." autofocus>
+    </div>
+
+    <div id="loading" class="hidden">Searching...</div>
+
+    <div id="results" class="hidden"></div>
+  </div>
+
+  <div id="debug-panel">
+    <div class="debug-header">
+      <span class="debug-title">Debug Console</span>
+      <button class="debug-close" onclick="document.getElementById('debug-panel').style.display='none'">Close</button>
+    </div>
+    <div id="debug-logs"></div>
+  </div>
+
+  <button id="debug-toggle">D</button>
+
+  <script src="renderer-command.js"></script>
+</body>
+</html>`;
+
+fs.writeFileSync(path.join(__dirname, 'command.html'), crtHtml);
+console.log('✅ CRT-style command.html created\n');
+
+// ============================================
+// UPDATE RENDERER TO REMOVE EMOJIS AND AI CATEGORY
+// ============================================
+
+const rendererContent = `// Debug Logger
+const debugLogs = [];
+function debugLog(message, data) {
+  const timestamp = new Date().toLocaleTimeString();
+  const logEntry = \`[\${timestamp}] \${message}\` + (data ? \` \${JSON.stringify(data)}\` : '');
+  debugLogs.push(logEntry);
+  console.log(message, data || '');
+
+  const debugLogsEl = document.getElementById('debug-logs');
+  if (debugLogsEl) {
+    debugLogsEl.innerHTML = debugLogs.slice(-50).map(log => 
+      \`<div style="color: #0f0; padding: 2px 0; font-size: 10px;">\${log}</div>\`
+    ).join('');
+    debugLogsEl.scrollTop = debugLogsEl.scrollHeight;
   }
-  return {
-    modes: [
-      { id: 'default', name: 'Work', color: '#ffffff' },
-      { id: 'personal', name: 'Personal', color: '#cccccc' }
-    ],
-    files: [],
-    bookmarks: [],
-    apps: [],
-    tasks: [],
-    events: [],
-    connections: [],
-    currentMode: 'default'
-  };
 }
 
-function saveDatabase(data) {
-  try {
-    fs.writeFileSync(DB_PATH, JSON.stringify(data, null, 2));
-    return true;
-  } catch (e) {
-    console.error('DB save error:', e);
-    return false;
-  }
-}
-
-let database = loadDatabase();
-
-// Parse natural language task using Gemini
-async function parseTaskNaturalLanguage(text) {
-  if (!process.env.GEMINI_API_KEY || process.env.GEMINI_API_KEY === 'your_gemini_api_key_here') {
-    return null;
-  }
-  
-  try {
-    const prompt = \`Extract task details from this text: "\${text}"
-Return ONLY a JSON object with this exact format (no markdown, no extra text):
-{
-  "title": "task title",
-  "startDate": "YYYY-MM-DD",
-  "endDate": "YYYY-MM-DD"
-}
-
-Examples:
-- "Buy groceries tomorrow" -> {"title": "Buy groceries", "startDate": "2025-10-07", "endDate": "2025-10-07"}
-- "Finish project by next Friday" -> {"title": "Finish project", "startDate": "2025-10-06", "endDate": "2025-10-11"}
-- "Call mom in 2 days" -> {"title": "Call mom", "startDate": "2025-10-08", "endDate": "2025-10-08"}
-
-Today is \${new Date().toISOString().split('T')[0]}\`;
-
-    const response = await axios.post(
-      \`https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=\${process.env.GEMINI_API_KEY}\`,
-      {
-        contents: [{
-          parts: [{ text: prompt }]
-        }]
-      }
-    );
-    
-    let responseText = response.data.candidates[0].content.parts[0].text;
-    responseText = responseText.replace(/\`\`\`json/g, '').replace(/\`\`\`/g, '').trim();
-    
-    const parsed = JSON.parse(responseText);
-    return parsed;
-  } catch (error) {
-    console.error('Task parsing error:', error.message);
-    return null;
-  }
-}
-
-// AI Search
-async function searchWithAI(query) {
-  if (!process.env.GEMINI_API_KEY || process.env.GEMINI_API_KEY === 'your_gemini_api_key_here') {
-    return [];
-  }
-  
-  try {
-    const response = await axios.post(
-      \`https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=\${process.env.GEMINI_API_KEY}\`,
-      {
-        contents: [{
-          parts: [{ text: \`Answer concisely in 1-2 sentences: \${query}\` }]
-        }]
-      }
-    );
-    
-    const text = response.data.candidates[0].content.parts[0].text;
-    return [{
-      type: 'ai',
-      title: 'AI Response',
-      description: text,
-      action: 'copy'
-    }];
-  } catch (error) {
-    console.error('AI search error:', error.message);
-    return [];
-  }
-}
-
-// Google Search
-async function searchWithGoogle(query) {
-  if (!process.env.GOOGLE_SEARCH_API_KEY || process.env.GOOGLE_SEARCH_API_KEY === 'your_google_api_key_here') {
-    return [];
-  }
-  
-  try {
-    const response = await axios.get('https://www.googleapis.com/customsearch/v1', {
-      params: {
-        key: process.env.GOOGLE_SEARCH_API_KEY,
-        cx: process.env.GOOGLE_SEARCH_ENGINE_ID,
-        q: query,
-        num: 5
-      }
+// Toggle debug panel
+setTimeout(() => {
+  const debugToggle = document.getElementById('debug-toggle');
+  const debugPanel = document.getElementById('debug-panel');
+  if (debugToggle && debugPanel) {
+    debugToggle.addEventListener('click', () => {
+      const isHidden = debugPanel.style.display === 'none' || !debugPanel.style.display;
+      debugPanel.style.display = isHidden ? 'block' : 'none';
+      debugLog('Debug panel toggled', { visible: isHidden });
     });
-    
-    if (response.data.items) {
-      return response.data.items.map(item => ({
-        type: 'web',
-        title: item.title,
-        description: item.snippet,
-        url: item.link,
-        action: 'open_url'
-      }));
-    }
-    return [];
-  } catch (error) {
-    console.error('Google search error:', error.message);
-    return [];
   }
+}, 100);
+
+// Main variables
+const input = document.getElementById('input');
+const resultsContainer = document.getElementById('results');
+const loading = document.getElementById('loading');
+const aiToggle = document.getElementById('ai-toggle');
+
+let allResults = [];
+let selectedIndex = -1;
+let searchTimer = null;
+let aiEnabled = false;
+
+debugLog('Command palette initialized');
+input.focus();
+
+// AI Toggle handler
+if (aiToggle) {
+  debugLog('AI toggle element found');
+  aiToggle.addEventListener('change', (e) => {
+    aiEnabled = e.target.checked;
+    debugLog('AI toggle changed', { enabled: aiEnabled });
+    if (input.value.trim()) {
+      performSearch(input.value.trim());
+    }
+  });
+
+  aiToggle.addEventListener('click', () => {
+    debugLog('AI toggle clicked');
+  });
+} else {
+  debugLog('ERROR: AI toggle element not found!');
 }
 
-// Local file search
-async function searchLocalFiles(query) {
-  const results = [];
-  const searchDirs = settings.searchDirectories || [];
-  
-  for (const dir of searchDirs) {
-    try {
-      const files = await searchDirectory(dir, query, 0, 2);
-      results.push(...files);
-      if (results.length >= 10) break;
-    } catch (e) {
-      // Skip
-    }
-  }
-  
-  return results.slice(0, 10).map(file => ({
-    type: file.isDirectory ? 'folder' : 'file',
-    title: file.name,
-    description: file.path,
-    path: file.path,
-    action: 'open_file'
-  }));
-}
+// Input handler
+input.addEventListener('input', (e) => {
+  const query = e.target.value.trim();
 
-async function searchDirectory(dir, query, currentDepth, maxDepth) {
-  if (currentDepth >= maxDepth) return [];
-  
-  const results = [];
+  if (!query) {
+    resultsContainer.classList.add('hidden');
+    resultsContainer.innerHTML = '';
+    loading.classList.add('hidden');
+    debugLog('Query empty - cleared results');
+    return;
+  }
+
+  debugLog('Input changed', { query });
+
+  resultsContainer.classList.add('hidden');
+  loading.classList.remove('hidden');
+
+  clearTimeout(searchTimer);
+
+  const debounceTime = aiEnabled ? 800 : 200;
+  debugLog('Debouncing', { time: debounceTime + 'ms', aiEnabled });
+
+  searchTimer = setTimeout(() => {
+    performSearch(query);
+  }, debounceTime);
+});
+
+async function performSearch(query) {
+  debugLog('performSearch START', { query });
+
   try {
-    const items = fs.readdirSync(dir);
-    const lowerQuery = query.toLowerCase();
-    
-    for (const item of items) {
-      if (item.startsWith('.')) continue;
-      
-      const fullPath = path.join(dir, item);
-      
-      if (item.toLowerCase().includes(lowerQuery)) {
-        const stat = fs.statSync(fullPath);
-        results.push({
-          name: item,
-          path: fullPath,
-          isDirectory: stat.isDirectory(),
-          size: stat.size
-        });
+    allResults = [];
+
+    // Always do local search
+    debugLog('Calling window.commandAPI.searchLocal');
+    const localResults = await window.commandAPI.searchLocal(query);
+    debugLog('searchLocal returned', { type: typeof localResults, isArray: Array.isArray(localResults) });
+
+    // Handle object response { files: [], apps: [] }
+    if (localResults && typeof localResults === 'object' && !Array.isArray(localResults)) {
+      debugLog('Converting object to array');
+      const apps = localResults.apps || [];
+      const files = localResults.files || [];
+      allResults = [...apps, ...files];
+      debugLog('Converted to array', { apps: apps.length, files: files.length, total: allResults.length });
+    } else if (Array.isArray(localResults)) {
+      allResults = localResults;
+      debugLog('Already array', { count: allResults.length });
+    }
+
+    // If AI is enabled, REPLACE results with AI response (not add to them)
+    if (aiEnabled) {
+      debugLog('AI enabled - calling searchAI');
+      loading.textContent = 'Asking AI...';
+      try {
+        const aiResults = await window.commandAPI.searchAI(query);
+        debugLog('AI results received', { count: aiResults?.length || 0 });
+        // Show ONLY local results - AI is for different purpose
+        // Don't add AI results to the list
+      } catch (aiError) {
+        debugLog('AI search error', { error: aiError.message });
       }
-      
-      if (results.length >= 10) break;
     }
-  } catch (e) {
-    // Skip
-  }
-  
-  return results;
-}
 
-// Search apps
-async function searchApps(query) {
-  if (!database || !database.apps || !Array.isArray(database.apps)) {
-    return [];
-  }
-  
-  const lowerQuery = query.toLowerCase();
-  const filteredApps = database.apps.filter(app => 
-    app && app.name && app.name.toLowerCase().includes(lowerQuery)
-  );
-  
-  return filteredApps.map(app => ({
-    type: 'app',
-    title: app.name,
-    description: app.path,
-    path: app.path,
-    action: 'launch_app'
-  }));
-}
-
-function createSidebar() {
-  const { height } = screen.getPrimaryDisplay().workAreaSize;
-  sidebarWindow = new BrowserWindow({
-    width: 56,
-    height: 250,
-    x: 20,
-    y: Math.round((height - 250) / 2),
-    frame: false,
-    transparent: true,
-    alwaysOnTop: true,
-    resizable: false,
-    skipTaskbar: true,
-    show: true,
-    webPreferences: {
-      nodeIntegration: false,
-      contextIsolation: true,
-      preload: path.join(__dirname, 'preload-sidebar.js')
-    }
-  });
-  sidebarWindow.loadFile('sidebar.html');
-  sidebarWindow.setAlwaysOnTop(true, 'floating', 1);
-}
-
-function createPanel(section) {
-  if (panelWindow && currentPanel === section) {
-    if (!panelWindow.isDestroyed()) {
-      panelWindow.close();
-    }
-    panelWindow = null;
-    currentPanel = null;
-    return;
-  }
-  
-  if (panelWindow && !panelWindow.isDestroyed()) {
-    panelWindow.close();
-  }
-  
-  const { height } = screen.getPrimaryDisplay().workAreaSize;
-  panelWindow = new BrowserWindow({
-    width: 420,
-    height: height - 80,
-    x: 86,
-    y: 40,
-    frame: false,
-    transparent: true,
-    alwaysOnTop: true,
-    resizable: false,
-    skipTaskbar: true,
-    show: true,
-    webPreferences: {
-      nodeIntegration: false,
-      contextIsolation: true,
-      preload: path.join(__dirname, 'preload-panel.js')
-    }
-  });
-  
-  panelWindow.loadFile('panel.html');
-  panelWindow.webContents.once('did-finish-load', () => {
-    if (panelWindow && !panelWindow.isDestroyed()) {
-      panelWindow.webContents.send('set-panel', section);
-    }
-  });
-  
-  currentPanel = section;
-  panelWindow.on('close', () => {
-    panelWindow = null;
-    currentPanel = null;
-  });
-}
-
-function createModeSelector() {
-  if (modeWindow) {
-    if (!modeWindow.isDestroyed()) {
-      modeWindow.close();
-    }
-    modeWindow = null;
-    return;
-  }
-  
-  const { height } = screen.getPrimaryDisplay().workAreaSize;
-  modeWindow = new BrowserWindow({
-    width: 240,
-    height: 280,
-    x: 86,
-    y: Math.round((height - 280) / 2),
-    frame: false,
-    transparent: true,
-    alwaysOnTop: true,
-    resizable: false,
-    skipTaskbar: true,
-    show: true,
-    webPreferences: {
-      nodeIntegration: false,
-      contextIsolation: true,
-      preload: path.join(__dirname, 'preload-mode.js')
-    }
-  });
-  
-  modeWindow.loadFile('mode.html');
-  modeWindow.on('close', () => {
-    modeWindow = null;
-  });
-}
-
-function createGraphView() {
-  // FIXED: Close panel first, check if exists
-  if (panelWindow && !panelWindow.isDestroyed()) {
-    panelWindow.close();
-    panelWindow = null;
-    currentPanel = null;
-  }
-  
-  if (graphWindow) {
-    if (!graphWindow.isDestroyed()) {
-      graphWindow.close();
-    }
-    graphWindow = null;
-    return;
-  }
-  
-  const { height } = screen.getPrimaryDisplay().workAreaSize;
-  graphWindow = new BrowserWindow({
-    width: 420,
-    height: height - 80,
-    x: 86,
-    y: 40,
-    frame: false,
-    transparent: true,
-    alwaysOnTop: true,
-    resizable: false,
-    skipTaskbar: true,
-    show: true,
-    webPreferences: {
-      nodeIntegration: false,
-      contextIsolation: true,
-      preload: path.join(__dirname, 'preload-graph.js')
-    }
-  });
-  
-  graphWindow.loadFile('graph.html');
-  graphWindow.on('close', () => {
-    graphWindow = null;
-  });
-}
-
-function createSettings() {
-  if (settingsWindow) {
-    if (!settingsWindow.isDestroyed()) {
-      settingsWindow.focus();
-    }
-    return;
-  }
-  
-  const { width, height } = screen.getPrimaryDisplay().workAreaSize;
-  settingsWindow = new BrowserWindow({
-    width: 600,
-    height: 500,
-    x: Math.round((width - 600) / 2),
-    y: Math.round((height - 500) / 2),
-    frame: false,
-    transparent: true,
-    alwaysOnTop: true,
-    resizable: false,
-    skipTaskbar: true,
-    show: true,
-    webPreferences: {
-      nodeIntegration: false,
-      contextIsolation: true,
-      preload: path.join(__dirname, 'preload-settings.js')
-    }
-  });
-  
-  settingsWindow.loadFile('settings.html');
-  settingsWindow.on('close', () => {
-    settingsWindow = null;
-  });
-}
-
-function createCommandPalette() {
-  const { width, height } = screen.getPrimaryDisplay().workAreaSize;
-  commandWindow = new BrowserWindow({
-    width: 700,
-    height: 520,
-    x: Math.round((width - 700) / 2),
-    y: Math.round((height - 520) / 3),
-    frame: false,
-    transparent: true,
-    alwaysOnTop: true,
-    show: false,
-    skipTaskbar: true,
-    webPreferences: {
-      nodeIntegration: false,
-      contextIsolation: true,
-      preload: path.join(__dirname, 'preload-command.js')
-    }
-  });
-  commandWindow.loadFile('command.html');
-  commandWindow.on('blur', () => {
-    if (commandWindow && !commandWindow.isDestroyed()) {
-      commandWindow.hide();
-    }
-  });
-}
-
-function toggleCommand() {
-  if (!commandWindow || commandWindow.isDestroyed()) {
-    createCommandPalette();
-    return;
-  }
-  
-  if (commandWindow.isVisible()) {
-    commandWindow.hide();
-  } else {
-    commandWindow.show();
-    commandWindow.focus();
-  }
-}
-
-function broadcastUpdate() {
-  if (panelWindow && !panelWindow.isDestroyed()) {
-    panelWindow.webContents.send('data-updated');
-  }
-  if (sidebarWindow && !sidebarWindow.isDestroyed()) {
-    sidebarWindow.webContents.send('data-updated');
-  }
-  if (modeWindow && !modeWindow.isDestroyed()) {
-    modeWindow.webContents.send('data-updated');
-  }
-  if (graphWindow && !graphWindow.isDestroyed()) {
-    graphWindow.webContents.send('data-updated');
-  }
-}
-
-app.whenReady().then(() => {
-  createSidebar();
-  createCommandPalette();
-  
-  const cmdShortcut = process.platform === 'darwin' ? 'Command+Shift+Space' : 'Control+Space';
-  globalShortcut.register(cmdShortcut, toggleCommand);
-  
-  globalShortcut.register('Escape', () => {
-    if (panelWindow && !panelWindow.isDestroyed()) panelWindow.close();
-    if (modeWindow && !modeWindow.isDestroyed()) modeWindow.close();
-    if (graphWindow && !graphWindow.isDestroyed()) graphWindow.close();
-    if (settingsWindow && !settingsWindow.isDestroyed()) settingsWindow.close();
-  });
-  
-  console.log('✅ Gogh Ready');
-});
-
-app.on('will-quit', () => globalShortcut.unregisterAll());
-app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') app.quit();
-});
-
-// IPC Handlers
-ipcMain.handle('open-panel', (_, section) => { createPanel(section); return true; });
-ipcMain.handle('open-mode-selector', () => { createModeSelector(); return true; });
-ipcMain.handle('open-graph-view', () => { createGraphView(); return true; });
-ipcMain.handle('open-settings', () => { createSettings(); return true; });
-ipcMain.handle('get-data', () => database);
-ipcMain.handle('get-settings', () => settings);
-
-// Parse task with AI
-ipcMain.handle('parse-task', async (_, text) => {
-  return await parseTaskNaturalLanguage(text);
-});
-
-// Separate search handlers
-ipcMain.handle('search-ai', async (_, query) => {
-  return await searchWithAI(query);
-});
-
-ipcMain.handle('search-google', async (_, query) => {
-  return await searchWithGoogle(query);
-});
-
-ipcMain.handle('search-local', async (_, query) => {
-  const fileResults = await searchLocalFiles(query);
-  const appResults = await searchApps(query);
-  return { files: fileResults, apps: appResults };
-});
-
-// Execute search result
-ipcMain.handle('execute-result', async (_, result) => {
-  switch (result.action) {
-    case 'open_file':
-      await shell.openPath(result.path);
-      break;
-    case 'launch_app':
-      await shell.openPath(result.path);
-      break;
-    case 'open_url':
-      await shell.openExternal(result.url);
-      break;
-  }
-  return true;
-});
-
-// Settings
-ipcMain.handle('add-search-directory', async () => {
-  const result = await dialog.showOpenDialog({ properties: ['openDirectory'] });
-  if (!result.canceled && result.filePaths.length > 0) {
-    settings.searchDirectories.push(result.filePaths[0]);
-    saveSettings(settings);
-    return settings;
-  }
-  return settings;
-});
-
-ipcMain.handle('remove-search-directory', (_, dir) => {
-  settings.searchDirectories = settings.searchDirectories.filter(d => d !== dir);
-  saveSettings(settings);
-  return settings;
-});
-
-// File operations
-ipcMain.handle('add-file', (_, file) => {
-  database.files.push(file);
-  saveDatabase(database);
-  broadcastUpdate();
-  return database;
-});
-
-ipcMain.handle('remove-file', (_, id) => {
-  database.files = database.files.filter(f => f.id !== id);
-  saveDatabase(database);
-  broadcastUpdate();
-  return database;
-});
-
-ipcMain.handle('open-file', async (_, filePath) => {
-  if (!filePath || filePath === 'undefined') return false;
-  try {
-    await shell.openPath(filePath);
-    return true;
+    debugLog('performSearch END', { totalResults: allResults.length });
+    showResults();
   } catch (error) {
-    console.error('Error opening file:', error);
-    return false;
+    debugLog('ERROR in performSearch', { error: error.message, stack: error.stack });
+    console.error('Search error:', error);
+    showResults();
   }
-});
+}
 
-ipcMain.handle('select-files', async () => {
-  const result = await dialog.showOpenDialog({ properties: ['openFile', 'multiSelections'] });
-  return result.filePaths;
-});
+function showResults() {
+  debugLog('showResults START', { resultCount: allResults.length });
+  loading.classList.add('hidden');
 
-// Bookmark operations
-ipcMain.handle('add-bookmark', (_, bookmark) => {
-  const bookmarkFile = path.join(BOOKMARKS_DIR, \`\${bookmark.id}.json\`);
-  fs.writeFileSync(bookmarkFile, JSON.stringify(bookmark, null, 2));
-  database.bookmarks.push(bookmark);
-  saveDatabase(database);
-  broadcastUpdate();
-  return database;
-});
-
-ipcMain.handle('remove-bookmark', (_, id) => {
-  const bookmarkFile = path.join(BOOKMARKS_DIR, \`\${id}.json\`);
-  if (fs.existsSync(bookmarkFile)) fs.unlinkSync(bookmarkFile);
-  database.bookmarks = database.bookmarks.filter(b => b.id !== id);
-  saveDatabase(database);
-  broadcastUpdate();
-  return database;
-});
-
-ipcMain.handle('open-bookmark', (_, url) => {
-  if (!url || url === 'undefined') return false;
-  shell.openExternal(url);
-  return true;
-});
-
-// App operations
-ipcMain.handle('add-app', (_, app) => {
-  database.apps.push(app);
-  saveDatabase(database);
-  broadcastUpdate();
-  return database;
-});
-
-ipcMain.handle('remove-app', (_, id) => {
-  database.apps = database.apps.filter(a => a.id !== id);
-  saveDatabase(database);
-  broadcastUpdate();
-  return database;
-});
-
-ipcMain.handle('launch-app', async (_, appPath) => {
-  if (!appPath || appPath === 'undefined') return false;
-  try {
-    await shell.openPath(appPath);
-    return true;
-  } catch (error) {
-    console.error('Error launching app:', error);
-    return false;
+  if (!allResults || allResults.length === 0) {
+    resultsContainer.innerHTML = '<div class="no-results">No results found</div>';
+    resultsContainer.classList.remove('hidden');
+    debugLog('No results to display');
+    return;
   }
-});
 
-// Connection operations
-ipcMain.handle('add-connection', (_, connection) => {
-  database.connections.push(connection);
-  saveDatabase(database);
-  broadcastUpdate();
-  return database;
-});
+  resultsContainer.innerHTML = '';
+  selectedIndex = -1;
 
-ipcMain.handle('remove-connection', (_, id) => {
-  database.connections = database.connections.filter(c => c.id !== id);
-  saveDatabase(database);
-  broadcastUpdate();
-  return database;
-});
+  // Group by category (exclude AI category)
+  const categories = {};
+  allResults.forEach(result => {
+    const cat = result.type || 'other';
+    if (cat === 'ai') return; // Skip AI results
+    if (!categories[cat]) categories[cat] = [];
+    categories[cat].push(result);
+  });
 
-// Task operations
-ipcMain.handle('add-task', (_, task) => {
-  database.tasks.push(task);
-  saveDatabase(database);
-  broadcastUpdate();
-  return database;
-});
+  debugLog('Categories', Object.keys(categories).map(k => k + ':' + categories[k].length));
 
-ipcMain.handle('toggle-task', (_, id) => {
-  const task = database.tasks.find(t => t.id === id);
-  if (task) {
-    task.completed = !task.completed;
-    if (task.completed) {
-      task.completedAt = new Date().toISOString();
+  const categoryOrder = ['app', 'file', 'folder', 'web'];
+  const categoryNames = {
+    'app': 'Applications',
+    'file': 'Files',
+    'folder': 'Folders',
+    'web': 'Web'
+  };
+
+  let totalRendered = 0;
+
+  categoryOrder.forEach(catKey => {
+    if (!categories[catKey]) return;
+
+    // Category header
+    const header = document.createElement('div');
+    header.className = 'category-header';
+    header.textContent = categoryNames[catKey] || catKey.toUpperCase();
+    resultsContainer.appendChild(header);
+
+    // Items
+    categories[catKey].forEach((result) => {
+      const item = document.createElement('div');
+      item.className = 'result-item';
+      item.dataset.index = totalRendered;
+
+      // Icon (no emoji, just box)
+      const iconEl = document.createElement('div');
+      iconEl.className = 'result-icon';
+
+      if (result.icon) {
+        const img = document.createElement('img');
+        img.src = result.icon;
+        img.onerror = () => {
+          iconEl.innerHTML = '';
+        };
+        iconEl.appendChild(img);
+      }
+
+      // Content
+      const content = document.createElement('div');
+      content.className = 'result-content';
+
+      const title = document.createElement('div');
+      title.className = 'result-title';
+      title.textContent = result.title || 'Untitled';
+
+      content.appendChild(title);
+
+      if (result.description) {
+        const desc = document.createElement('div');
+        desc.className = 'result-description';
+        desc.textContent = result.description;
+        content.appendChild(desc);
+      }
+
+      item.appendChild(iconEl);
+      item.appendChild(content);
+
+      item.addEventListener('click', () => executeResult(result));
+
+      resultsContainer.appendChild(item);
+      totalRendered++;
+    });
+  });
+
+  debugLog('showResults END', { rendered: totalRendered });
+  resultsContainer.classList.remove('hidden');
+}
+
+async function executeResult(result) {
+  debugLog('Executing', { title: result.title, type: result.type });
+  await window.commandAPI.executeResult(result);
+  await window.commandAPI.hide();
+}
+
+// Keyboard navigation
+input.addEventListener('keydown', (e) => {
+  const items = document.querySelectorAll('.result-item');
+
+  if (e.key === 'ArrowDown') {
+    e.preventDefault();
+    if (selectedIndex < items.length - 1) {
+      selectedIndex++;
+      updateSelection(items);
     }
-    saveDatabase(database);
-    broadcastUpdate();
+  } else if (e.key === 'ArrowUp') {
+    e.preventDefault();
+    if (selectedIndex > 0) {
+      selectedIndex--;
+      updateSelection(items);
+    }
+  } else if (e.key === 'Enter') {
+    e.preventDefault();
+    if (selectedIndex >= 0 && items[selectedIndex]) {
+      items[selectedIndex].click();
+    }
+  } else if (e.key === 'Escape') {
+    window.commandAPI.hide();
   }
-  return database;
 });
 
-ipcMain.handle('delete-task', (_, id) => {
-  database.tasks = database.tasks.filter(t => t.id !== id);
-  saveDatabase(database);
-  broadcastUpdate();
-  return database;
-});
+function updateSelection(items) {
+  items.forEach((item, index) => {
+    if (index === selectedIndex) {
+      item.classList.add('selected');
+      item.scrollIntoView({ block: 'nearest' });
+    } else {
+      item.classList.remove('selected');
+    }
+  });
+}
 
-// Mode operations
-ipcMain.handle('add-mode', (_, mode) => {
-  database.modes.push(mode);
-  saveDatabase(database);
-  broadcastUpdate();
-  return database;
-});
-
-ipcMain.handle('switch-mode', (_, id) => {
-  database.currentMode = id;
-  saveDatabase(database);
-  broadcastUpdate();
-  return database;
-});
-
-ipcMain.handle('hide-command', () => {
-  if (commandWindow && !commandWindow.isDestroyed()) {
-    commandWindow.hide();
-  }
-  return true;
-});
+debugLog('All event listeners attached - ready!');
 `;
 
-// FIXED PRELOAD-PANEL.JS - Add parseTask
-files['preload-panel.js'] = `const { contextBridge, ipcRenderer } = require('electron');
-contextBridge.exposeInMainWorld('panelAPI', {
-  getData: () => ipcRenderer.invoke('get-data'),
-  parseTask: (text) => ipcRenderer.invoke('parse-task', text),
-  addFile: (file) => ipcRenderer.invoke('add-file', file),
-  removeFile: (id) => ipcRenderer.invoke('remove-file', id),
-  openFile: (path) => ipcRenderer.invoke('open-file', path),
-  selectFiles: () => ipcRenderer.invoke('select-files'),
-  addBookmark: (bookmark) => ipcRenderer.invoke('add-bookmark', bookmark),
-  removeBookmark: (id) => ipcRenderer.invoke('remove-bookmark', id),
-  openBookmark: (url) => ipcRenderer.invoke('open-bookmark', url),
-  addApp: (app) => ipcRenderer.invoke('add-app', app),
-  removeApp: (id) => ipcRenderer.invoke('remove-app', id),
-  launchApp: (path) => ipcRenderer.invoke('launch-app', path),
-  addTask: (task) => ipcRenderer.invoke('add-task', task),
-  toggleTask: (id) => ipcRenderer.invoke('toggle-task', id),
-  deleteTask: (id) => ipcRenderer.invoke('delete-task', id),
-  switchMode: (id) => ipcRenderer.invoke('switch-mode', id),
-  openModeSelector: () => ipcRenderer.invoke('open-mode-selector'),
-  onSetPanel: (callback) => ipcRenderer.on('set-panel', (_, section) => callback(section)),
-  onDataUpdated: (callback) => ipcRenderer.on('data-updated', callback)
-});`;
+fs.writeFileSync(path.join(__dirname, 'renderer-command.js'), rendererContent);
+console.log('✅ renderer-command.js updated\n');
 
-// UPDATED RENDERER-PANEL.JS - Natural language task input
-files['renderer-panel.js'] = `let data = null;
-let currentSection = null;
-let currentTab = 'files';
-
-async function init() {
-  data = await window.panelAPI.getData();
-  
-  window.panelAPI.onSetPanel(async (section) => {
-    currentSection = section;
-    data = await window.panelAPI.getData();
-    render();
-  });
-  
-  window.panelAPI.onDataUpdated(async () => {
-    data = await window.panelAPI.getData();
-    render();
-  });
-}
-
-function render() {
-  document.getElementById('panelTitle').textContent = currentSection.toUpperCase();
-  
-  const currentMode = data.modes.find(m => m.id === data.currentMode);
-  document.getElementById('modeIndicator').textContent = currentMode ? currentMode.name : 'Work';
-  
-  const content = document.getElementById('panelContent');
-  
-  if (currentSection === 'files') {
-    renderFilesSection();
-  } else if (currentSection === 'tasks') {
-    renderTasks(content);
-  }
-}
-
-function openModeSelector() {
-  window.panelAPI.openModeSelector();
-}
-
-function renderFilesSection() {
-  const tabsContainer = document.getElementById('tabsContainer');
-  tabsContainer.classList.remove('hidden');
-  tabsContainer.innerHTML = \`
-    <div class="tab \${currentTab === 'files' ? 'active' : ''}" onclick="switchTab('files')">Files</div>
-    <div class="tab \${currentTab === 'bookmarks' ? 'active' : ''}" onclick="switchTab('bookmarks')">Bookmarks</div>
-    <div class="tab \${currentTab === 'apps' ? 'active' : ''}" onclick="switchTab('apps')">Apps</div>
-  \`;
-  
-  const content = document.getElementById('panelContent');
-  if (currentTab === 'files') renderFiles(content);
-  else if (currentTab === 'bookmarks') renderBookmarks(content);
-  else if (currentTab === 'apps') renderApps(content);
-}
-
-function switchTab(tab) {
-  currentTab = tab;
-  renderFilesSection();
-}
-
-function renderFiles(content) {
-  const filtered = data.files.filter(f => f.mode === data.currentMode);
-  content.innerHTML = \`
-    <div class="drop-zone" id="drop">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
-        <path d="M21 10c0-1.1-.9-2-2-2h-6.5l-2-2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V10z"/>
-        <line x1="12" y1="13" x2="12" y2="19"/>
-        <line x1="9" y1="16" x2="15" y2="16"/>
-      </svg>
-      Drop files here
-    </div>
-    <div>\${filtered.length ? filtered.map(f => \`
-      <div class="file-item" onclick="openFile('\${f.path.replace(/\\\\/g, '\\\\\\\\')}')">
-        <span class="file-icon">📄</span>
-        <div class="file-info">
-          <div class="file-name">\${f.name}</div>
-        </div>
-        <div class="file-delete" onclick="event.stopPropagation();removeFile('\${f.id}')">×</div>
-      </div>
-    \`).join('') : '<div class="empty">NO FILES</div>'}</div>
-    <button class="btn" onclick="addFiles()">+ ADD FILES</button>
-  \`;
-  setupDrop();
-}
-
-function renderBookmarks(content) {
-  const filtered = data.bookmarks.filter(b => b.mode === data.currentMode);
-  content.innerHTML = \`
-    <div class="quick-add">
-      <input type="text" id="bookmarkUrl" class="input" placeholder="Paste URL (https://...)">
-      <button class="btn" onclick="addBookmark()">+ ADD</button>
-    </div>
-    <div>\${filtered.length ? filtered.map(b => \`
-      <div class="file-item" onclick="openBookmark('\${b.url}')">
-        <span class="file-icon">🔖</span>
-        <div class="file-info">
-          <div class="file-name">\${b.name || b.url}</div>
-        </div>
-        <div class="file-delete" onclick="event.stopPropagation();removeBookmark('\${b.id}')">×</div>
-      </div>
-    \`).join('') : '<div class="empty">NO BOOKMARKS</div>'}</div>
-  \`;
-}
-
-function renderApps(content) {
-  const filtered = data.apps.filter(a => a.mode === data.currentMode);
-  content.innerHTML = \`
-    <button class="btn" onclick="addApp()" style="margin-bottom:20px">+ ADD APP</button>
-    <div>\${filtered.length ? filtered.map(a => \`
-      <div class="file-item" onclick="launchApp('\${a.path.replace(/\\\\/g, '\\\\\\\\')}')">
-        <span class="file-icon">⚡</span>
-        <div class="file-info">
-          <div class="file-name">\${a.name}</div>
-        </div>
-        <div class="file-delete" onclick="event.stopPropagation();removeApp('\${a.id}')">×</div>
-      </div>
-    \`).join('') : '<div class="empty">NO APPS</div>'}</div>
-  \`;
-}
-
-function renderTasks(content) {
-  document.getElementById('tabsContainer').classList.add('hidden');
-  const filtered = data.tasks.filter(t => t.mode === data.currentMode);
-  const active = filtered.filter(t => !t.completed);
-  const completed = filtered.filter(t => t.completed);
-  
-  content.innerHTML = \`
-    <div class="quick-add">
-      <div style="background: rgba(100, 150, 255, 0.1); padding: 12px; border-radius: 8px; margin-bottom: 12px; font-size: 11px; color: rgba(255,255,255,0.7);">
-        💡 Type naturally: "Buy groceries tomorrow", "Finish project by Friday", "Call mom in 2 days"
-      </div>
-      <input type="text" id="taskInput" class="input" placeholder="What do you need to do? (e.g., Meeting with team next Monday)">
-      <button class="btn" onclick="addTaskNatural()">+ ADD TASK</button>
-    </div>
-    <div>\${active.length ? active.map(t => {
-      const now = new Date();
-      const end = new Date(t.endDate);
-      const daysLeft = Math.ceil((end - now) / (1000 * 60 * 60 * 24));
-      const dueDateText = daysLeft > 0 ? \`\${daysLeft}d left\` : daysLeft === 0 ? 'Today' : 'Overdue';
-      
-      return \`
-        <div class="file-item">
-          <span onclick="toggleTask('\${t.id}')" style="cursor:pointer;font-size:20px">☐</span>
-          <div class="file-info">
-            <div class="file-name">\${t.title}</div>
-            <div class="file-meta">\${new Date(t.startDate).toLocaleDateString()} - \${new Date(t.endDate).toLocaleDateString()} • \${dueDateText}</div>
-          </div>
-          <div class="file-delete" onclick="deleteTask('\${t.id}')">×</div>
-        </div>
-      \`;
-    }).join('') : '<div class="empty">NO ACTIVE TASKS</div>'}</div>
-    \${completed.length ? '<div style="margin-top:20px;padding-top:20px;border-top:1px solid rgba(255,255,255,0.2)"></div>' : ''}
-    \${completed.map(t => \`
-      <div class="file-item" style="opacity:0.5">
-        <span onclick="toggleTask('\${t.id}')" style="cursor:pointer;font-size:20px">☑</span>
-        <div class="file-info">
-          <div class="file-name" style="text-decoration:line-through">\${t.title}</div>
-          <div class="file-meta">Completed \${new Date(t.completedAt).toLocaleDateString()}</div>
-        </div>
-        <div class="file-delete" onclick="deleteTask('\${t.id}')">×</div>
-      </div>
-    \`).join('')}
-  \`;
-  
-  const input = document.getElementById('taskInput');
-  if (input) {
-    input.focus();
-    input.addEventListener('keypress', (e) => {
-      if (e.key === 'Enter') addTaskNatural();
-    });
-  }
-}
-
-function setupDrop() {
-  const zone = document.getElementById('drop');
-  if (!zone) return;
-  
-  zone.addEventListener('dragover', (e) => {
-    e.preventDefault();
-    zone.classList.add('drag-over');
-  });
-  
-  zone.addEventListener('dragleave', () => {
-    zone.classList.remove('drag-over');
-  });
-  
-  zone.addEventListener('drop', async (e) => {
-    e.preventDefault();
-    zone.classList.remove('drag-over');
-    
-    for (const file of Array.from(e.dataTransfer.files)) {
-      await window.panelAPI.addFile({
-        id: Date.now() + Math.random(),
-        name: file.name,
-        path: file.path,
-        mode: data.currentMode,
-        date: new Date().toISOString()
-      });
-    }
-  });
-}
-
-async function addFiles() {
-  const paths = await window.panelAPI.selectFiles();
-  for (const p of paths) {
-    await window.panelAPI.addFile({
-      id: Date.now() + Math.random(),
-      name: p.split(/[\\\\\\/]/).pop(),
-      path: p,
-      mode: data.currentMode,
-      date: new Date().toISOString()
-    });
-  }
-}
-
-async function openFile(filePath) {
-  if (!filePath || filePath === 'undefined') {
-    alert('File path is missing');
-    return;
-  }
-  await window.panelAPI.openFile(filePath);
-}
-
-async function removeFile(id) {
-  await window.panelAPI.removeFile(id);
-}
-
-async function addBookmark() {
-  const urlInput = document.getElementById('bookmarkUrl');
-  const url = urlInput.value.trim();
-  if (!url) return;
-  
-  await window.panelAPI.addBookmark({
-    id: Date.now(),
-    name: url,
-    url: url,
-    mode: data.currentMode,
-    date: new Date().toISOString()
-  });
-  urlInput.value = '';
-}
-
-async function openBookmark(url) {
-  await window.panelAPI.openBookmark(url);
-}
-
-async function removeBookmark(id) {
-  await window.panelAPI.removeBookmark(id);
-}
-
-async function addApp() {
-  const paths = await window.panelAPI.selectFiles();
-  if (paths.length > 0) {
-    await window.panelAPI.addApp({
-      id: Date.now(),
-      name: paths[0].split(/[\\\\\\/]/).pop(),
-      path: paths[0],
-      mode: data.currentMode
-    });
-  }
-}
-
-async function launchApp(appPath) {
-  await window.panelAPI.launchApp(appPath);
-}
-
-async function removeApp(id) {
-  await window.panelAPI.removeApp(id);
-}
-
-async function addTaskNatural() {
-  const input = document.getElementById('taskInput');
-  if (!input || !input.value.trim()) return;
-  
-  const text = input.value.trim();
-  input.disabled = true;
-  input.placeholder = 'Processing with AI...';
-  
-  try {
-    const parsed = await window.panelAPI.parseTask(text);
-    
-    if (parsed && parsed.title && parsed.startDate && parsed.endDate) {
-      await window.panelAPI.addTask({
-        id: Date.now(),
-        title: parsed.title,
-        startDate: parsed.startDate,
-        endDate: parsed.endDate,
-        mode: data.currentMode,
-        completed: false,
-        createdAt: new Date().toISOString()
-      });
-      input.value = '';
-    } else {
-      alert('Could not understand the task. Try: "Buy groceries tomorrow" or "Meeting next Friday"');
-    }
-  } catch (error) {
-    alert('AI parsing failed. Check your Gemini API key in .env');
-  }
-  
-  input.disabled = false;
-  input.placeholder = 'What do you need to do?';
-  input.focus();
-}
-
-async function toggleTask(id) {
-  await window.panelAPI.toggleTask(id);
-}
-
-async function deleteTask(id) {
-  await window.panelAPI.deleteTask(id);
-}
-
-init();`;
-
-// Write files
-console.log('Writing fixed files...\n');
-Object.entries(files).forEach(([filename, content]) => {
-  fs.writeFileSync(filename, content);
-  console.log(`✓ ${filename}`);
-});
-
-console.log('\n✅ All fixed!');
-console.log('\n🔧 Fixed:');
-console.log('  • Graph view "object destroyed" error');
-console.log('  • Graph closes panel properly before opening');
-console.log('  • Natural language task creation with Gemini');
-console.log('  • Simple text input: "Buy groceries tomorrow"');
-console.log('\n💡 Examples:');
-console.log('  • "Meeting with team next Monday"');
-console.log('  • "Call mom in 2 days"');
-console.log('  • "Finish project by Friday"');
-console.log('\n▶️  Run: npm start');
+console.log('🎉 CRT-STYLE UI CREATED!\n');
+console.log('📋 Features:');
+console.log('   ✓ CRT scanline effect');
+console.log('   ✓ White glow/blur aesthetic');
+console.log('   ✓ CRT-style AI toggle with glow');
+console.log('   ✓ NO emojis anywhere');
+console.log('   ✓ NO AI results category');
+console.log('   ✓ Monospace font for retro feel');
+console.log('   ✓ Smooth animations and glows');
+console.log('\n⚡ Restart your app to see the CRT aesthetic!');
