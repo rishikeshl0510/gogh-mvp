@@ -70,20 +70,67 @@ function loadDatabase() {
   try {
     if (fs.existsSync(DB_PATH)) {
       const data = JSON.parse(fs.readFileSync(DB_PATH, 'utf8'));
-      if (!data.apps) data.apps = [];
-      if (!data.files) data.files = [];
-      if (!data.bookmarks) data.bookmarks = [];
-      if (!data.tasks) data.tasks = [];
-      if (!data.events) data.events = [];
-      if (!data.connections) data.connections = [];
-      if (!data.modes) data.modes = [{ id: 'default', name: 'Work', color: '#ffffff' }];
-      if (!data.currentMode) data.currentMode = 'default';
+      let needsSave = false;
+      
+      if (!data.apps) { data.apps = []; needsSave = true; }
+      if (!data.files) { data.files = []; needsSave = true; }
+      if (!data.bookmarks) { data.bookmarks = []; needsSave = true; }
+      if (!data.tasks) { data.tasks = []; needsSave = true; }
+      if (!data.intents) { 
+        data.intents = []; 
+        needsSave = true;
+        console.log('✅ Database migrated: Added intents array');
+      }
+      if (!data.events) { data.events = []; needsSave = true; }
+      if (!data.connections) { data.connections = []; needsSave = true; }
+      if (!data.modes) { 
+        data.modes = [{ id: 'default', name: 'Work', color: '#ffffff' }]; 
+        needsSave = true; 
+      }
+      if (!data.currentMode) { 
+        data.currentMode = 'default'; 
+        needsSave = true; 
+      }
+      
+      // Migrate existing tasks to add new fields
+      if (data.tasks.length > 0) {
+        data.tasks.forEach(task => {
+          if (task.intentId === undefined) {
+            task.intentId = null;
+            needsSave = true;
+          }
+          if (!task.attachments) {
+            task.attachments = [];
+            needsSave = true;
+          }
+        });
+        if (needsSave) {
+          console.log('✅ Database migrated: Updated task schema');
+        }
+      }
+      
+      if (needsSave) {
+        saveDatabase(data);
+        console.log('✅ Database migration complete');
+      }
+      
       return data;
     }
   } catch (e) {
     console.error('DB load error:', e);
+    console.error('Creating backup and starting fresh...');
+    if (fs.existsSync(DB_PATH)) {
+      const backup = DB_PATH + '.error-backup.' + Date.now();
+      try {
+        fs.copyFileSync(DB_PATH, backup);
+        console.log('Backup created at:', backup);
+      } catch (backupError) {
+        console.error('Could not create backup:', backupError);
+      }
+    }
   }
-  return {
+  
+  const freshData = {
     modes: [
       { id: 'default', name: 'Work', color: '#ffffff' },
       { id: 'personal', name: 'Personal', color: '#cccccc' }
@@ -92,10 +139,15 @@ function loadDatabase() {
     bookmarks: [],
     apps: [],
     tasks: [],
+    intents: [],
     events: [],
     connections: [],
     currentMode: 'default'
   };
+  
+  console.log('✅ Created fresh database');
+  saveDatabase(freshData);
+  return freshData;
 }
 
 function saveDatabase(data) {
@@ -110,44 +162,146 @@ function saveDatabase(data) {
 
 let database = loadDatabase();
 
-// Parse natural language task using Gemini
-async function parseTaskNaturalLanguage(text) {
+// Parse intent to clarify what tasks need to be created
+async function clarifyIntent(text) {
   if (!process.env.GEMINI_API_KEY || process.env.GEMINI_API_KEY === 'your_gemini_api_key_here') {
+    console.error('Gemini API key not configured');
     return null;
   }
   
   try {
-    const prompt = `Extract task details from this text: "${text}"
+    const prompt = `Analyze this intent: "${text}"
+
+Provide a clear, concise description of what the user wants to accomplish (1-2 sentences max).
+
 Return ONLY a JSON object with this exact format (no markdown, no extra text):
 {
-  "title": "task title",
-  "startDate": "YYYY-MM-DD",
-  "endDate": "YYYY-MM-DD"
+  "intent": "Clear description of what user wants to accomplish"
 }
 
 Examples:
-- "Buy groceries tomorrow" -> {"title": "Buy groceries", "startDate": "2025-10-07", "endDate": "2025-10-07"}
-- "Finish project by next Friday" -> {"title": "Finish project", "startDate": "2025-10-06", "endDate": "2025-10-11"}
-- "Call mom in 2 days" -> {"title": "Call mom", "startDate": "2025-10-08", "endDate": "2025-10-08"}
+- "Plan my vacation to Japan" -> {"intent": "Plan and organize a vacation trip to Japan including bookings, activities, and preparations"}
+- "Learn React" -> {"intent": "Learn React framework through tutorials, practice projects, and understanding core concepts"}
 
 Today is ${new Date().toISOString().split('T')[0]}`;
 
+    console.log('Sending request to Gemini API for intent clarification...');
     const response = await axios.post(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${process.env.GEMINI_API_KEY}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
       {
         contents: [{
           parts: [{ text: prompt }]
         }]
+      },
+      {
+        headers: {
+          'Content-Type': 'application/json'
+        }
       }
     );
     
+    console.log('Gemini API response received:', JSON.stringify(response.data, null, 2));
+    
+    if (!response.data || !response.data.candidates || !response.data.candidates[0]) {
+      console.error('Invalid response structure from Gemini API');
+      return null;
+    }
+    
     let responseText = response.data.candidates[0].content.parts[0].text;
+    console.log('Raw response text:', responseText);
+    
     responseText = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
+    console.log('Cleaned response text:', responseText);
     
     const parsed = JSON.parse(responseText);
+    console.log('Parsed intent:', parsed);
+    
+    if (!parsed || !parsed.intent) {
+      console.error('Parsed response missing intent field');
+      return null;
+    }
+    
     return parsed;
   } catch (error) {
-    console.error('Task parsing error:', error.message);
+    console.error('Intent clarification error:', error.message);
+    if (error.response) {
+      console.error('API error response:', error.response.data);
+    }
+    return null;
+  }
+}
+
+// Generate multiple tasks from intent using Gemini
+async function generateTasksFromIntent(intentText) {
+  if (!process.env.GEMINI_API_KEY || process.env.GEMINI_API_KEY === 'your_gemini_api_key_here') {
+    console.error('Gemini API key not configured');
+    return null;
+  }
+  
+  try {
+    const prompt = `Break down this intent into specific actionable tasks: "${intentText}"
+
+Return ONLY a JSON object with an array of tasks (no markdown, no extra text):
+{
+  "tasks": [
+    {"title": "task title", "startDate": "YYYY-MM-DD", "endDate": "YYYY-MM-DD"},
+    {"title": "task title", "startDate": "YYYY-MM-DD", "endDate": "YYYY-MM-DD"}
+  ]
+}
+
+Guidelines:
+- Create 2-6 specific, actionable tasks
+- Tasks should be in logical order
+- Set realistic dates based on task dependencies
+- Each task should be clear and focused
+
+Examples:
+- "Plan vacation to Japan" -> {"tasks": [{"title": "Research destinations and create itinerary", "startDate": "2025-10-07", "endDate": "2025-10-10"}, {"title": "Book flights and accommodation", "startDate": "2025-10-11", "endDate": "2025-10-13"}, {"title": "Apply for visa if needed", "startDate": "2025-10-14", "endDate": "2025-10-20"}]}
+
+Today is ${new Date().toISOString().split('T')[0]}`;
+
+    console.log('Sending request to Gemini API for task generation...');
+    const response = await axios.post(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
+      {
+        contents: [{
+          parts: [{ text: prompt }]
+        }]
+      },
+      {
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      }
+    );
+    
+    console.log('Gemini API response received:', JSON.stringify(response.data, null, 2));
+    
+    if (!response.data || !response.data.candidates || !response.data.candidates[0]) {
+      console.error('Invalid response structure from Gemini API');
+      return null;
+    }
+    
+    let responseText = response.data.candidates[0].content.parts[0].text;
+    console.log('Raw response text:', responseText);
+    
+    responseText = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
+    console.log('Cleaned response text:', responseText);
+    
+    const parsed = JSON.parse(responseText);
+    console.log('Parsed tasks:', parsed);
+    
+    if (!parsed || !parsed.tasks || !Array.isArray(parsed.tasks)) {
+      console.error('Parsed response missing tasks array');
+      return null;
+    }
+    
+    return parsed;
+  } catch (error) {
+    console.error('Task generation error:', error.message);
+    if (error.response) {
+      console.error('API error response:', error.response.data);
+    }
     return null;
   }
 }
@@ -160,7 +314,7 @@ async function searchWithAI(query) {
   
   try {
     const response = await axios.post(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${process.env.GEMINI_API_KEY}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
       {
         contents: [{
           parts: [{ text: `Answer concisely in 1-2 sentences: ${query}` }]
@@ -213,10 +367,11 @@ async function searchWithGoogle(query) {
   }
 }
 
-// Local file search
+// Local file search (exclude executables and shortcuts)
 async function searchLocalFiles(query) {
   const results = [];
   const searchDirs = settings.searchDirectories || [];
+  const appExtensions = ['.exe', '.lnk', '.app', '.dmg'];
   
   for (const dir of searchDirs) {
     try {
@@ -228,13 +383,18 @@ async function searchLocalFiles(query) {
     }
   }
   
-  return results.slice(0, 10).map(file => ({
-    type: file.isDirectory ? 'folder' : 'file',
-    title: file.name,
-    description: file.path,
-    path: file.path,
-    action: 'open_file'
-  }));
+  return results.slice(0, 10)
+    .filter(file => {
+      const ext = file.name.toLowerCase().substring(file.name.lastIndexOf('.'));
+      return !appExtensions.includes(ext);
+    })
+    .map(file => ({
+      type: file.isDirectory ? 'folder' : 'file',
+      title: file.name,
+      description: file.path,
+      path: file.path,
+      action: 'open_file'
+    }));
 }
 
 async function searchDirectory(dir, query, currentDepth, maxDepth) {
@@ -282,11 +442,55 @@ async function searchApps(query) {
   
   return filteredApps.map(app => ({
     type: 'app',
-    title: app.name,
+    title: app.name.replace(/\.(exe|lnk|app)$/i, ''),
     description: app.path,
     path: app.path,
+    icon: app.icon || null,
     action: 'launch_app'
   }));
+}
+
+// Get list of installed applications
+async function getInstalledApps() {
+  const apps = [];
+  const commonAppDirs = [];
+  
+  if (process.platform === 'win32') {
+    commonAppDirs.push(
+      'C:\\Program Files',
+      'C:\\Program Files (x86)',
+      path.join(os.homedir(), 'AppData\\Local\\Programs')
+    );
+  } else if (process.platform === 'darwin') {
+    commonAppDirs.push('/Applications', path.join(os.homedir(), 'Applications'));
+  }
+  
+  for (const dir of commonAppDirs) {
+    try {
+      if (fs.existsSync(dir)) {
+        const items = fs.readdirSync(dir);
+        for (const item of items) {
+          const fullPath = path.join(dir, item);
+          try {
+            const stat = fs.statSync(fullPath);
+            if (process.platform === 'win32' && (item.endsWith('.exe') || stat.isDirectory())) {
+              apps.push({
+                name: item.replace(/\.(exe|lnk)$/i, ''),
+                path: fullPath
+              });
+            } else if (process.platform === 'darwin' && item.endsWith('.app')) {
+              apps.push({
+                name: item.replace('.app', ''),
+                path: fullPath
+              });
+            }
+          } catch (e) {}
+        }
+      }
+    } catch (e) {}
+  }
+  
+  return apps.slice(0, 50);
 }
 
 function createSidebar() {
@@ -308,7 +512,7 @@ function createSidebar() {
       preload: path.join(__dirname, 'preload-sidebar.js')
     }
   });
-  sidebarWindow.loadFile('sidebar.html');
+  sidebarWindow.loadFile('dist/sidebar.html');
   sidebarWindow.setAlwaysOnTop(true, 'floating', 1);
 }
 
@@ -345,7 +549,7 @@ function createPanel(section) {
     }
   });
   
-  panelWindow.loadFile('panel.html');
+  panelWindow.loadFile('dist/panel.html');
   panelWindow.webContents.once('did-finish-load', () => {
     if (panelWindow && !panelWindow.isDestroyed()) {
       panelWindow.webContents.send('set-panel', section);
@@ -387,7 +591,7 @@ function createModeSelector() {
     }
   });
   
-  modeWindow.loadFile('mode.html');
+  modeWindow.loadFile('dist/mode.html');
   modeWindow.on('close', () => {
     modeWindow = null;
   });
@@ -428,7 +632,7 @@ function createGraphView() {
     }
   });
   
-  graphWindow.loadFile('graph.html');
+  graphWindow.loadFile('dist/graph.html');
   graphWindow.on('close', () => {
     graphWindow = null;
   });
@@ -461,7 +665,7 @@ function createSettings() {
     }
   });
   
-  settingsWindow.loadFile('settings.html');
+  settingsWindow.loadFile('dist/settings.html');
   settingsWindow.on('close', () => {
     settingsWindow = null;
   });
@@ -485,7 +689,7 @@ function createCommandPalette() {
       preload: path.join(__dirname, 'preload-command.js')
     }
   });
-  commandWindow.loadFile('command.html');
+  commandWindow.loadFile('dist/command.html');
   commandWindow.on('blur', () => {
     if (commandWindow && !commandWindow.isDestroyed()) {
       commandWindow.hide();
@@ -552,9 +756,19 @@ ipcMain.handle('open-settings', () => { createSettings(); return true; });
 ipcMain.handle('get-data', () => database);
 ipcMain.handle('get-settings', () => settings);
 
-// Parse task with AI
-ipcMain.handle('parse-task', async (_, text) => {
-  return await parseTaskNaturalLanguage(text);
+// Clarify intent with AI
+ipcMain.handle('clarify-intent', async (_, text) => {
+  return await clarifyIntent(text);
+});
+
+// Generate tasks from intent with AI
+ipcMain.handle('generate-tasks', async (_, intentText) => {
+  return await generateTasksFromIntent(intentText);
+});
+
+// Get installed apps
+ipcMain.handle('get-installed-apps', async () => {
+  return await getInstalledApps();
 });
 
 // Separate search handlers
@@ -702,9 +916,32 @@ ipcMain.handle('remove-connection', (_, id) => {
   return database;
 });
 
+// Intent operations
+ipcMain.handle('add-intent', (_, intent) => {
+  database.intents.push(intent);
+  saveDatabase(database);
+  broadcastUpdate();
+  return database;
+});
+
+ipcMain.handle('delete-intent', (_, id) => {
+  database.intents = database.intents.filter(i => i.id !== id);
+  database.tasks = database.tasks.filter(t => t.intentId !== id);
+  saveDatabase(database);
+  broadcastUpdate();
+  return database;
+});
+
 // Task operations
 ipcMain.handle('add-task', (_, task) => {
   database.tasks.push(task);
+  saveDatabase(database);
+  broadcastUpdate();
+  return database;
+});
+
+ipcMain.handle('add-tasks-batch', (_, tasks) => {
+  database.tasks.push(...tasks);
   saveDatabase(database);
   broadcastUpdate();
   return database;
@@ -727,6 +964,27 @@ ipcMain.handle('delete-task', (_, id) => {
   database.tasks = database.tasks.filter(t => t.id !== id);
   saveDatabase(database);
   broadcastUpdate();
+  return database;
+});
+
+ipcMain.handle('attach-to-task', (_, data) => {
+  const task = database.tasks.find(t => t.id === data.taskId);
+  if (task) {
+    if (!task.attachments) task.attachments = [];
+    task.attachments.push(data.attachment);
+    saveDatabase(database);
+    broadcastUpdate();
+  }
+  return database;
+});
+
+ipcMain.handle('detach-from-task', (_, data) => {
+  const task = database.tasks.find(t => t.id === data.taskId);
+  if (task && task.attachments) {
+    task.attachments = task.attachments.filter(a => a.id !== data.attachmentId);
+    saveDatabase(database);
+    broadcastUpdate();
+  }
   return database;
 });
 
