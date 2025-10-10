@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 
 export default function Settings() {
   const [settings, setSettings] = useState(null);
+  const [isOpen, setIsOpen] = useState(true);
 
   useEffect(() => {
     const init = async () => {
@@ -14,6 +15,11 @@ export default function Settings() {
 
   if (!settings) return null;
 
+  const closeSettings = () => {
+    setIsOpen(false);
+    setTimeout(() => window.close(), 300);
+  };
+
   const addDirectory = async () => {
     const updated = await window.settingsAPI.addSearchDirectory();
     setSettings(updated);
@@ -24,11 +30,23 @@ export default function Settings() {
     setSettings(updated);
   };
 
+  const deleteAllData = async () => {
+    const confirmed = confirm('⚠️ WARNING: This will delete ALL your data including:\n\n• All files and bookmarks\n• All tasks and intents\n• All apps\n• All modes (except default)\n\nThis action cannot be undone. Are you sure?');
+    
+    if (confirmed) {
+      const doubleConfirm = confirm('This is your last chance. Delete everything?');
+      if (doubleConfirm) {
+        await window.settingsAPI.deleteAllData();
+        alert('All data has been deleted.');
+      }
+    }
+  };
+
   return (
-    <div className="settings-container">
+    <div className={`settings-container ${isOpen ? 'settings-open' : ''}`}>
       <div className="settings-header">
         <div className="settings-title">Settings</div>
-        <div className="settings-close" onClick={() => window.close()}>×</div>
+        <div className="settings-close" onClick={closeSettings}>×</div>
       </div>
       <div className="settings-content">
         <div className="settings-section">
@@ -45,6 +63,16 @@ export default function Settings() {
             ))}
           </div>
           <button className="settings-btn" onClick={addDirectory}>+ Add Directory</button>
+        </div>
+
+        <div className="settings-section danger-zone">
+          <div className="settings-section-title">Danger Zone</div>
+          <div className="settings-section-desc">
+            Permanently delete all application data
+          </div>
+          <button className="settings-btn danger-btn" onClick={deleteAllData}>
+            Delete All Data
+          </button>
         </div>
       </div>
     </div>

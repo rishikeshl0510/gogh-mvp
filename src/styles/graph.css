@@ -1,76 +1,162 @@
-* { margin: 0; padding: 0; box-sizing: border-box; }
-body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  background: transparent;
-  overflow: hidden;
-  height: 100vh;
-  color: #ffffff;
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
 }
 
-@keyframes pixelate {
-  0% { background-position: 0 0; }
-  100% { background-position: 40px 40px; }
+body {
+  font-family: 'IBM Plex Mono', monospace;
+  background: transparent;
+  color: white;
+  overflow: hidden;
 }
 
 .graph-container {
-  width: 100%;
-  height: 100%;
-  background: #000000;
-  background-image: 
-    linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
-  background-size: 20px 20px;
-  animation: pixelate 4s linear infinite;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 14px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.9);
+  width: 100vw;
+  height: 100vh;
+  background: rgba(5, 5, 5, 0.98);
+  backdrop-filter: blur(40px);
   display: flex;
   flex-direction: column;
   overflow: hidden;
   position: relative;
 }
 
+.graph-container::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: 
+    radial-gradient(circle at 20% 50%, rgba(100, 50, 200, 0.1) 0%, transparent 50%),
+    radial-gradient(circle at 80% 80%, rgba(50, 150, 255, 0.08) 0%, transparent 50%),
+    radial-gradient(circle at 40% 20%, rgba(150, 255, 100, 0.06) 0%, transparent 50%),
+    repeating-linear-gradient(
+      0deg,
+      rgba(255, 255, 255, 0.015) 0px,
+      transparent 1px,
+      transparent 40px
+    ),
+    repeating-linear-gradient(
+      90deg,
+      rgba(255, 255, 255, 0.015) 0px,
+      transparent 1px,
+      transparent 40px
+    );
+  pointer-events: none;
+  opacity: 0.4;
+  animation: backgroundShift 30s ease-in-out infinite;
+}
+
+@keyframes backgroundShift {
+  0%, 100% {
+    opacity: 0.4;
+  }
+  50% {
+    opacity: 0.6;
+  }
+}
+
 .graph-header {
-  padding: 20px 24px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+  padding: 16px 24px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
   display: flex;
   justify-content: space-between;
   align-items: center;
+  background: rgba(0, 0, 0, 0.3);
+  position: relative;
+  z-index: 100;
+  gap: 20px;
 }
 
 .graph-title {
-  font-size: 16px;
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.9);
   font-weight: 600;
-  text-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
-  letter-spacing: 0.5px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
 }
 
-.graph-title::before { content: '> '; opacity: 0.7; }
+.graph-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  justify-content: center;
+}
+
+.control-btn {
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  color: rgba(255, 255, 255, 0.6);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.control-btn svg {
+  width: 18px;
+  height: 18px;
+}
+
+.control-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.25);
+  color: rgba(255, 255, 255, 0.95);
+}
+
+.zoom-indicator {
+  padding: 6px 12px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 6px;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.7);
+  font-weight: 600;
+  min-width: 60px;
+  text-align: center;
+}
 
 .close-btn {
   width: 32px;
   height: 32px;
-  background: rgba(255, 255, 255, 0.08);
-  border-radius: 6px;
   display: flex;
   align-items: center;
   justify-content: center;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  font-size: 24px;
+  color: rgba(255, 255, 255, 0.5);
   cursor: pointer;
   transition: all 0.2s;
-  font-size: 20px;
 }
 
 .close-btn:hover {
   background: rgba(255, 0, 0, 0.2);
+  border-color: rgba(255, 0, 0, 0.3);
+  color: rgba(255, 100, 100, 0.9);
 }
 
 #graphContent {
   flex: 1;
   position: relative;
   overflow: hidden;
+  cursor: grab;
 }
 
-canvas {
+#graphContent:active {
+  cursor: grabbing;
+}
+
+#canvas {
   position: absolute;
   top: 0;
   left: 0;
@@ -84,7 +170,152 @@ canvas {
   left: 0;
   width: 100%;
   height: 100%;
-  transform-origin: 0 0;
+  pointer-events: none;
+  transition: transform 0.1s ease-out;
+}
+
+.node {
+  position: absolute;
+  padding: 16px 20px;
+  background: rgba(20, 20, 20, 0.95);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 12px;
+  box-shadow: 
+    0 8px 32px rgba(0, 0, 0, 0.5),
+    inset 0 0 40px rgba(255, 255, 255, 0.02);
+  pointer-events: all;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  animation: nodeAppear 0.5s ease-out;
+  min-width: 180px;
+  max-width: 220px;
+  z-index: 10;
+}
+
+@keyframes nodeAppear {
+  from {
+    opacity: 0;
+    transform: scale(0.8);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.node:hover {
+  background: rgba(30, 30, 30, 0.95);
+  border-color: rgba(255, 255, 255, 0.3);
+  box-shadow: 
+    0 12px 48px rgba(0, 0, 0, 0.6),
+    0 0 40px rgba(100, 200, 255, 0.2),
+    inset 0 0 60px rgba(255, 255, 255, 0.05);
+  transform: translateY(-2px);
+}
+
+.node-center {
+  background: linear-gradient(135deg, rgba(50, 50, 50, 0.95), rgba(20, 20, 20, 0.95));
+  border-color: rgba(255, 255, 255, 0.3);
+  box-shadow: 
+    0 0 60px rgba(100, 200, 255, 0.3),
+    0 8px 32px rgba(0, 0, 0, 0.5),
+    inset 0 0 40px rgba(255, 255, 255, 0.05);
+  animation: pulse 3s ease-in-out infinite;
+  z-index: 20;
+  min-width: 220px;
+  max-width: 280px;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    box-shadow: 
+      0 0 60px rgba(100, 200, 255, 0.3),
+      0 8px 32px rgba(0, 0, 0, 0.5),
+      inset 0 0 40px rgba(255, 255, 255, 0.05);
+  }
+  50% {
+    box-shadow: 
+      0 0 80px rgba(100, 200, 255, 0.5),
+      0 8px 32px rgba(0, 0, 0, 0.5),
+      inset 0 0 60px rgba(255, 255, 255, 0.08);
+  }
+}
+
+.node-center .node-title {
+  font-size: 18px;
+  font-weight: 700;
+  text-align: center;
+  background: linear-gradient(135deg, #64c8ff, #c864ff);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.node-intent {
+  background: linear-gradient(135deg, rgba(40, 40, 40, 0.95), rgba(20, 20, 20, 0.95));
+  border-color: rgba(100, 200, 255, 0.3);
+  z-index: 15;
+}
+
+.node-intent:hover {
+  border-color: rgba(100, 200, 255, 0.6);
+  box-shadow: 
+    0 12px 48px rgba(0, 0, 0, 0.6),
+    0 0 40px rgba(100, 200, 255, 0.3),
+    inset 0 0 60px rgba(100, 200, 255, 0.08);
+}
+
+.node-task {
+  padding: 12px 16px;
+  background: rgba(25, 25, 25, 0.9);
+  border-color: rgba(150, 150, 200, 0.2);
+  min-width: 160px;
+  max-width: 200px;
+  z-index: 5;
+}
+
+.node-task:hover {
+  border-color: rgba(150, 150, 200, 0.4);
+  box-shadow: 
+    0 8px 32px rgba(0, 0, 0, 0.6),
+    0 0 30px rgba(150, 150, 200, 0.2),
+    inset 0 0 40px rgba(255, 255, 255, 0.05);
+}
+
+.node-task.completed {
+  opacity: 0.5;
+  border-color: rgba(100, 255, 100, 0.3);
+}
+
+.node-task.completed .node-task-title {
+  text-decoration: line-through;
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.node-title {
+  color: rgba(255, 255, 255, 0.95);
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 6px;
+  line-height: 1.4;
+  letter-spacing: 0.3px;
+}
+
+.node-meta {
+  color: rgba(255, 255, 255, 0.4);
+  font-size: 11px;
+  letter-spacing: 0.5px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.node-task-title {
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 12px;
+  line-height: 1.4;
+  letter-spacing: 0.2px;
 }
 
 .empty-state {
@@ -92,93 +323,22 @@ canvas {
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  padding: 40px;
   text-align: center;
   color: rgba(255, 255, 255, 0.3);
-  font-size: 13px;
-  background: rgba(0, 0, 0, 0.5);
-  border-radius: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-}
-
-.node {
-  position: absolute;
-  background: #ffffff;
-  color: #000;
-  padding: 16px 20px;
-  border-radius: 8px;
-  box-shadow: 0 4px 20px rgba(255, 255, 255, 0.3);
-  cursor: pointer;
-  transition: all 0.3s ease;
-  min-width: 200px;
-  max-width: 300px;
-}
-
-.node:hover {
-  transform: scale(1.05);
-  box-shadow: 0 8px 30px rgba(255, 255, 255, 0.5);
-  z-index: 100;
-}
-
-.node-header {
-  font-size: 11px;
-  font-weight: 600;
-  color: #666;
-  margin-bottom: 8px;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-
-.node-title {
-  font-size: 13px;
-  font-weight: 600;
-  color: #000;
-  margin-bottom: 8px;
-  line-height: 1.4;
-}
-
-.node-meta {
-  font-size: 10px;
-  color: #999;
-  display: flex;
-  gap: 12px;
-}
-
-.node-task {
-  background: #f5f5f5;
-  color: #000;
-  padding: 10px 14px;
-  border-radius: 6px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-  min-width: 180px;
-  max-width: 250px;
-}
-
-.node-task:hover {
-  transform: scale(1.03);
-}
-
-.node-task-title {
-  font-size: 11px;
-  font-weight: 500;
-  color: #000;
-  margin-bottom: 4px;
-}
-
-.node-task-meta {
-  font-size: 9px;
-  color: #666;
-}
-
-.node-task.completed {
-  opacity: 0.4;
-  text-decoration: line-through;
+  font-size: 14px;
+  letter-spacing: 1px;
+  padding: 40px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 16px;
 }
 
 .graph-info {
-  padding: 10px 24px;
-  border-top: 1px solid rgba(255, 255, 255, 0.2);
-  font-size: 10px;
-  opacity: 0.5;
+  padding: 16px 24px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
   text-align: center;
+  color: rgba(255, 255, 255, 0.3);
+  font-size: 11px;
+  letter-spacing: 1px;
+  background: rgba(0, 0, 0, 0.3);
 }

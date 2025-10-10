@@ -1009,3 +1009,22 @@ ipcMain.handle('hide-command', () => {
   }
   return true;
 });
+
+ipcMain.handle('delete-all-data', () => {
+  database = {
+    modes: [
+      { id: 'default', name: 'Work', color: '#ffffff' }
+    ],
+    files: [],
+    bookmarks: [],
+    apps: [],
+    tasks: [],
+    intents: [],
+    events: [],
+    connections: [],
+    currentMode: 'default'
+  };
+  saveDatabase(database);
+  broadcastUpdate();
+  return true;
+});

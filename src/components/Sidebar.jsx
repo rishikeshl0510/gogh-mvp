@@ -44,21 +44,28 @@ export default function Sidebar() {
   return (
     <div className="sidebar">
       <div className="sidebar-icon" onClick={() => openPanel('files')}>
-        <span className="icon">📁</span>
+        <svg className="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+        </svg>
         <span className="badge">{totalFiles}</span>
       </div>
       <div className="sidebar-icon" onClick={() => openPanel('tasks')}>
-        <span className="icon">✓</span>
+        <svg className="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <polyline points="9 11 12 14 22 4"/>
+          <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
+        </svg>
         <span className="badge">{activeTasks}</span>
       </div>
-      <div className="sidebar-icon" onClick={openGraphView}>
-        <span className="icon">◉</span>
-      </div>
       <div className="sidebar-icon" onClick={openModeSelector}>
-        <span className="icon">⚡</span>
+        <svg className="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+        </svg>
       </div>
       <div className="sidebar-icon" onClick={openSettings}>
-        <span className="icon">⚙</span>
+        <svg className="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <circle cx="12" cy="12" r="3"/>
+          <path d="M12 1v6m0 6v6M5.64 5.64l4.24 4.24m4.24 4.24l4.24 4.24M1 12h6m6 0h6M5.64 18.36l4.24-4.24m4.24-4.24l4.24-4.24"/>
+        </svg>
       </div>
     </div>
   );
