@@ -28,11 +28,11 @@ export default function Sidebar() {
   };
 
   const openModeSelector = () => {
-    window.sidebarAPI.openModeSelector();
+    openPanel('modes');
   };
 
   const openSettings = () => {
-    window.sidebarAPI.openSettings();
+    openPanel('settings');
   };
 
   const m = data.currentMode;
@@ -43,6 +43,11 @@ export default function Sidebar() {
 
   return (
     <div className="sidebar">
+      <div className="sidebar-icon" onClick={() => openPanel('chat')}>
+        <svg className="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+        </svg>
+      </div>
       <div className="sidebar-icon" onClick={() => openPanel('files')}>
         <svg className="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
           <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>

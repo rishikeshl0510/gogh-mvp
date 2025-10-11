@@ -36,24 +36,30 @@ export default function Mode() {
   };
 
   return (
-    <div className="mode-container">
+    <div className="mode-widget">
       <div className="mode-header">
-        <div className="mode-title">Switch Mode</div>
+        <div className="mode-title">SWITCH MODE</div>
         <div className="mode-close" onClick={() => window.close()}>×</div>
       </div>
-      <div className="mode-list">
-        {data.modes.map(m => (
-          <div 
-            key={m.id}
-            className={`mode-item ${m.id === data.currentMode ? 'active' : ''}`}
-            onClick={() => switchMode(m.id)}
-          >
-            <span className="mode-name">{m.name}</span>
-            <span className="mode-indicator"></span>
-          </div>
-        ))}
+      <div className="mode-content">
+        <div className="mode-list">
+          {data.modes.map(m => (
+            <div
+              key={m.id}
+              className={`mode-item ${m.id === data.currentMode ? 'active' : ''}`}
+              onClick={() => switchMode(m.id)}
+            >
+              <div className="mode-radio">
+                <div className={`radio-outer ${m.id === data.currentMode ? 'active' : ''}`}>
+                  {m.id === data.currentMode && <div className="radio-inner"></div>}
+                </div>
+              </div>
+              <span className="mode-name">{m.name}</span>
+            </div>
+          ))}
+        </div>
+        <button className="mode-add-btn" onClick={addMode}>+ New Mode</button>
       </div>
-      <button className="mode-add-btn" onClick={addMode}>+ New Mode</button>
     </div>
   );
 }

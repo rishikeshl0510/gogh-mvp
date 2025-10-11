@@ -9,9 +9,13 @@
     "check": "node check-setup.js"
   },
   "dependencies": {
-    "electron": "^33.0.0",
-    "dotenv": "^16.4.5",
+    "@ai-sdk/react": "^2.0.65",
+    "ai": "^5.0.65",
     "axios": "^1.6.0",
+    "dotenv": "^16.4.5",
+    "electron": "^33.0.0",
+    "electron-ollama": "^0.1.25",
+    "ollama": "^0.6.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0"
   },
