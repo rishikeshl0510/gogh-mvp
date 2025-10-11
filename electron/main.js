@@ -3,6 +3,8 @@ const path = require('path');
 const fs = require('fs');
 const os = require('os');
 const axios = require('axios');
+const { ElectronOllama } = require('electron-ollama');
+const ollama = require('ollama').Ollama;
 require('dotenv').config();
 
 let sidebarWindow = null;
@@ -12,20 +14,21 @@ let commandWindow = null;
 let graphWindow = null;
 let settingsWindow = null;
 let currentPanel = null;
-
-const DB_PATH = path.join(app.getPath('userData'), 'gogh-data.json');
-const BOOKMARKS_DIR = path.join(app.getPath('userData'), 'bookmarks');
-const SETTINGS_PATH = path.join(app.getPath('userData'), 'settings.json');
+let eo = null;
+let ollamaClient = null;
+let isOllamaStarting = false;
+let DB_PATH;
+let BOOKMARKS_DIR;
+let SETTINGS_PATH;
+let APPS_CACHE_PATH;
+let cachedApps = null;
+let isScanningApps = false;
 
 Menu.setApplicationMenu(null);
 
-if (!fs.existsSync(BOOKMARKS_DIR)) {
-  fs.mkdirSync(BOOKMARKS_DIR, { recursive: true });
-}
-
 function loadSettings() {
   try {
-    if (fs.existsSync(SETTINGS_PATH)) {
+    if (SETTINGS_PATH && fs.existsSync(SETTINGS_PATH)) {
       return JSON.parse(fs.readFileSync(SETTINGS_PATH, 'utf8'));
     }
   } catch (e) {
@@ -64,11 +67,16 @@ function saveSettings(settings) {
   }
 }
 
-let settings = loadSettings();
+let settings = {};
+let database = null;
 
 function loadDatabase() {
+  if (!DB_PATH) {
+    console.warn('DB_PATH not initialized yet, skipping database load');
+    return null;
+  }
   try {
-    if (fs.existsSync(DB_PATH)) {
+    if (DB_PATH && fs.existsSync(DB_PATH)) {
       const data = JSON.parse(fs.readFileSync(DB_PATH, 'utf8'));
       let needsSave = false;
       
@@ -87,11 +95,16 @@ function loadDatabase() {
         data.modes = [{ id: 'default', name: 'Work', color: '#ffffff' }]; 
         needsSave = true; 
       }
-      if (!data.currentMode) { 
-        data.currentMode = 'default'; 
-        needsSave = true; 
+      if (!data.currentMode) {
+        data.currentMode = 'default';
+        needsSave = true;
       }
-      
+      if (!data.chatHistory) {
+        data.chatHistory = {};
+        needsSave = true;
+        console.log('✅ Database migrated: Added chatHistory');
+      }
+
       // Migrate existing tasks to add new fields
       if (data.tasks.length > 0) {
         data.tasks.forEach(task => {
@@ -142,7 +155,8 @@ function loadDatabase() {
     intents: [],
     events: [],
     connections: [],
-    currentMode: 'default'
+    currentMode: 'default',
+    chatHistory: {}
   };
   
   console.log('✅ Created fresh database');
@@ -151,6 +165,10 @@ function loadDatabase() {
 }
 
 function saveDatabase(data) {
+  if (!DB_PATH) {
+    console.warn('DB_PATH not initialized yet, skipping database save');
+    return false;
+  }
   try {
     fs.writeFileSync(DB_PATH, JSON.stringify(data, null, 2));
     return true;
@@ -160,15 +178,8 @@ function saveDatabase(data) {
   }
 }
 
-let database = loadDatabase();
-
-// Parse intent to clarify what tasks need to be created
+// Parse intent to clarify what tasks need to be created using Ollama
 async function clarifyIntent(text) {
-  if (!process.env.GEMINI_API_KEY || process.env.GEMINI_API_KEY === 'your_gemini_api_key_here') {
-    console.error('Gemini API key not configured');
-    return null;
-  }
-  
   try {
     const prompt = `Analyze this intent: "${text}"
 
@@ -185,59 +196,44 @@ Examples:
 
 Today is ${new Date().toISOString().split('T')[0]}`;
 
-    console.log('Sending request to Gemini API for intent clarification...');
-    const response = await axios.post(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
-      {
-        contents: [{
-          parts: [{ text: prompt }]
-        }]
-      },
-      {
-        headers: {
-          'Content-Type': 'application/json'
-        }
-      }
-    );
-    
-    console.log('Gemini API response received:', JSON.stringify(response.data, null, 2));
-    
-    if (!response.data || !response.data.candidates || !response.data.candidates[0]) {
-      console.error('Invalid response structure from Gemini API');
+    console.log('Sending request to Ollama for intent clarification...');
+    const response = await ollamaClient.chat({
+      model: 'qwen2.5:0.5b',
+      messages: [{ role: 'user', content: prompt }],
+      stream: false,
+      format: 'json'
+    });
+
+    console.log('Ollama response received:', JSON.stringify(response, null, 2));
+
+    if (!response || !response.message || !response.message.content) {
+      console.error('Invalid response structure from Ollama');
       return null;
     }
-    
-    let responseText = response.data.candidates[0].content.parts[0].text;
+
+    let responseText = response.message.content;
     console.log('Raw response text:', responseText);
-    
+
     responseText = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
     console.log('Cleaned response text:', responseText);
-    
+
     const parsed = JSON.parse(responseText);
     console.log('Parsed intent:', parsed);
-    
+
     if (!parsed || !parsed.intent) {
       console.error('Parsed response missing intent field');
       return null;
     }
-    
+
     return parsed;
   } catch (error) {
     console.error('Intent clarification error:', error.message);
-    if (error.response) {
-      console.error('API error response:', error.response.data);
-    }
     return null;
   }
 }
 
-// Generate multiple tasks from intent using Gemini
+// Generate multiple tasks from intent using Ollama
 async function generateTasksFromIntent(intentText) {
-  if (!process.env.GEMINI_API_KEY || process.env.GEMINI_API_KEY === 'your_gemini_api_key_here') {
-    console.error('Gemini API key not configured');
-    return null;
-  }
-  
   try {
     const prompt = `Break down this intent into specific actionable tasks: "${intentText}"
 
@@ -260,78 +256,75 @@ Examples:
 
 Today is ${new Date().toISOString().split('T')[0]}`;
 
-    console.log('Sending request to Gemini API for task generation...');
-    const response = await axios.post(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
-      {
-        contents: [{
-          parts: [{ text: prompt }]
-        }]
-      },
-      {
-        headers: {
-          'Content-Type': 'application/json'
-        }
-      }
-    );
-    
-    console.log('Gemini API response received:', JSON.stringify(response.data, null, 2));
-    
-    if (!response.data || !response.data.candidates || !response.data.candidates[0]) {
-      console.error('Invalid response structure from Gemini API');
+    console.log('Sending request to Ollama for task generation...');
+    const response = await ollamaClient.chat({
+      model: 'qwen2.5:0.5b',
+      messages: [{ role: 'user', content: prompt }],
+      stream: false,
+      format: 'json'
+    });
+
+    console.log('Ollama response received:', JSON.stringify(response, null, 2));
+
+    if (!response || !response.message || !response.message.content) {
+      console.error('Invalid response structure from Ollama');
       return null;
     }
-    
-    let responseText = response.data.candidates[0].content.parts[0].text;
+
+    let responseText = response.message.content;
     console.log('Raw response text:', responseText);
-    
+
     responseText = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
     console.log('Cleaned response text:', responseText);
-    
+
     const parsed = JSON.parse(responseText);
     console.log('Parsed tasks:', parsed);
-    
+
     if (!parsed || !parsed.tasks || !Array.isArray(parsed.tasks)) {
       console.error('Parsed response missing tasks array');
       return null;
     }
-    
+
     return parsed;
   } catch (error) {
     console.error('Task generation error:', error.message);
-    if (error.response) {
-      console.error('API error response:', error.response.data);
-    }
     return null;
   }
 }
 
-// AI Search
-async function searchWithAI(query) {
-  if (!process.env.GEMINI_API_KEY || process.env.GEMINI_API_KEY === 'your_gemini_api_key_here') {
-    return [];
-  }
-  
+// AI Search using Ollama with streaming
+async function searchWithAI(query, streamCallback) {
   try {
-    const response = await axios.post(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
-      {
-        contents: [{
-          parts: [{ text: `Answer concisely in 1-2 sentences: ${query}` }]
-        }]
+    const response = await ollamaClient.chat({
+      model: 'qwen2.5:0.5b',
+      messages: [{ role: 'user', content: `Answer concisely in 2-3 sentences: ${query}` }],
+      stream: true
+    });
+
+    let fullText = '';
+    for await (const chunk of response) {
+      if (chunk.message && chunk.message.content) {
+        fullText += chunk.message.content;
+        if (streamCallback) {
+          streamCallback(fullText);
+        }
       }
-    );
-    
-    const text = response.data.candidates[0].content.parts[0].text;
-    return [{
+    }
+
+    return {
       type: 'ai',
-      title: 'AI Response',
-      description: text,
+      title: query,
+      description: fullText,
       action: 'copy'
-    }];
+    };
   } catch (error) {
     console.error('AI search error:', error.message);
-    return [];
+    return {
+      type: 'ai',
+      title: query,
+      description: 'Error: ' + error.message,
+      action: 'copy'
+    };
   }
 }
 
@@ -429,68 +422,167 @@ async function searchDirectory(dir, query, currentDepth, maxDepth) {
   return results;
 }
 
-// Search apps
+// Search apps - uses cache for instant results
 async function searchApps(query) {
-  if (!database || !database.apps || !Array.isArray(database.apps)) {
+  // Use cached apps if available, otherwise return empty
+  const appsToSearch = cachedApps || [];
+
+  if (appsToSearch.length === 0) {
     return [];
   }
-  
+
   const lowerQuery = query.toLowerCase();
-  const filteredApps = database.apps.filter(app => 
+  const filteredApps = appsToSearch.filter(app =>
     app && app.name && app.name.toLowerCase().includes(lowerQuery)
   );
-  
-  return filteredApps.map(app => ({
+
+  return filteredApps.slice(0, 20).map(app => ({
     type: 'app',
     title: app.name.replace(/\.(exe|lnk|app)$/i, ''),
-    description: app.path,
+    description: '', // Remove path from display
     path: app.path,
     icon: app.icon || null,
     action: 'launch_app'
   }));
 }
 
-// Get list of installed applications
+// Recursively scan directory for .exe files (Windows) or .app bundles (macOS)
+function scanDirectoryForApps(dir, depth = 0, maxDepth = 2) {
+  const apps = [];
+  if (depth > maxDepth) return apps;
+
+  try {
+    const items = fs.readdirSync(dir);
+    for (const item of items) {
+      const fullPath = path.join(dir, item);
+      try {
+        const stat = fs.statSync(fullPath);
+
+        if (process.platform === 'win32') {
+          if (item.endsWith('.exe') && stat.isFile()) {
+            apps.push({
+              name: item.replace(/\.exe$/i, ''),
+              path: fullPath
+            });
+          } else if (item.endsWith('.lnk') && stat.isFile()) {
+            // Include .lnk shortcuts
+            apps.push({
+              name: item.replace(/\.lnk$/i, ''),
+              path: fullPath
+            });
+          } else if (stat.isDirectory() && depth < maxDepth) {
+            // Recursively scan subdirectories
+            apps.push(...scanDirectoryForApps(fullPath, depth + 1, maxDepth));
+          }
+        } else if (process.platform === 'darwin') {
+          if (item.endsWith('.app')) {
+            apps.push({
+              name: item.replace('.app', ''),
+              path: fullPath
+            });
+          }
+        }
+      } catch (e) {
+        // Skip files we can't access
+      }
+    }
+  } catch (e) {
+    // Skip directories we can't read
+  }
+
+  return apps;
+}
+
+// Load apps cache from disk
+function loadAppsCache() {
+  try {
+    if (APPS_CACHE_PATH && fs.existsSync(APPS_CACHE_PATH)) {
+      const cacheData = JSON.parse(fs.readFileSync(APPS_CACHE_PATH, 'utf8'));
+      cachedApps = cacheData.apps || [];
+      console.log(`✅ Loaded ${cachedApps.length} apps from cache`);
+      return cachedApps;
+    }
+  } catch (error) {
+    console.error('Error loading apps cache:', error);
+  }
+  return [];
+}
+
+// Save apps cache to disk
+function saveAppsCache(apps) {
+  try {
+    if (APPS_CACHE_PATH) {
+      fs.writeFileSync(APPS_CACHE_PATH, JSON.stringify({ apps, timestamp: Date.now() }, null, 2));
+      console.log(`✅ Saved ${apps.length} apps to cache`);
+      return true;
+    }
+  } catch (error) {
+    console.error('Error saving apps cache:', error);
+  }
+  return false;
+}
+
+// Scan and cache apps in background (non-blocking)
+async function scanAndCacheApps() {
+  if (isScanningApps) {
+    console.log('⚠️ App scan already in progress');
+    return cachedApps || [];
+  }
+
+  isScanningApps = true;
+  console.log('🔍 Starting background app scan...');
+
+  try {
+    const apps = await getInstalledApps();
+    cachedApps = apps;
+    saveAppsCache(apps);
+    console.log(`✅ App scan complete: ${apps.length} apps found`);
+    return apps;
+  } catch (error) {
+    console.error('Error scanning apps:', error);
+    return cachedApps || [];
+  } finally {
+    isScanningApps = false;
+  }
+}
+
+// Get list of installed applications from common locations
 async function getInstalledApps() {
   const apps = [];
   const commonAppDirs = [];
-  
+
   if (process.platform === 'win32') {
+    // Windows: Include Program Files, Start Menu, and AppData
     commonAppDirs.push(
       'C:\\Program Files',
       'C:\\Program Files (x86)',
-      path.join(os.homedir(), 'AppData\\Local\\Programs')
+      path.join(os.homedir(), 'AppData\\Local\\Programs'),
+      path.join(os.homedir(), 'AppData\\Roaming\\Microsoft\\Windows\\Start Menu\\Programs'),
+      'C:\\ProgramData\\Microsoft\\Windows\\Start Menu\\Programs'
     );
   } else if (process.platform === 'darwin') {
-    commonAppDirs.push('/Applications', path.join(os.homedir(), 'Applications'));
+    // macOS: Include /Applications and ~/Applications
+    commonAppDirs.push(
+      '/Applications',
+      path.join(os.homedir(), 'Applications')
+    );
   }
-  
+
+  const seen = new Set();
   for (const dir of commonAppDirs) {
-    try {
-      if (fs.existsSync(dir)) {
-        const items = fs.readdirSync(dir);
-        for (const item of items) {
-          const fullPath = path.join(dir, item);
-          try {
-            const stat = fs.statSync(fullPath);
-            if (process.platform === 'win32' && (item.endsWith('.exe') || stat.isDirectory())) {
-              apps.push({
-                name: item.replace(/\.(exe|lnk)$/i, ''),
-                path: fullPath
-              });
-            } else if (process.platform === 'darwin' && item.endsWith('.app')) {
-              apps.push({
-                name: item.replace('.app', ''),
-                path: fullPath
-              });
-            }
-          } catch (e) {}
+    if (fs.existsSync(dir)) {
+      const foundApps = scanDirectoryForApps(dir, 0, 2);
+      for (const app of foundApps) {
+        // Deduplicate by app name
+        if (!seen.has(app.name.toLowerCase())) {
+          seen.add(app.name.toLowerCase());
+          apps.push(app);
         }
       }
-    } catch (e) {}
+    }
   }
-  
-  return apps.slice(0, 50);
+
+  return apps.slice(0, 100); // Return up to 100 apps
 }
 
 function createSidebar() {
@@ -525,17 +617,19 @@ function createPanel(section) {
     currentPanel = null;
     return;
   }
-  
+
   if (panelWindow && !panelWindow.isDestroyed()) {
     panelWindow.close();
   }
-  
-  const { height } = screen.getPrimaryDisplay().workAreaSize;
+
+  const primaryDisplay = screen.getPrimaryDisplay();
+  const { width, height } = primaryDisplay.workAreaSize;
+
   panelWindow = new BrowserWindow({
-    width: 420,
-    height: height - 80,
-    x: 86,
-    y: 40,
+    width: width,
+    height: height,
+    x: 0,
+    y: 0,
     frame: false,
     transparent: true,
     alwaysOnTop: true,
@@ -548,6 +642,9 @@ function createPanel(section) {
       preload: path.join(__dirname, 'preload-panel.js')
     }
   });
+
+  // Enable click-through for the window
+  panelWindow.setIgnoreMouseEvents(true, { forward: true });
   
   panelWindow.loadFile('dist/panel.html');
   panelWindow.webContents.once('did-finish-load', () => {
@@ -560,6 +657,13 @@ function createPanel(section) {
   panelWindow.on('close', () => {
     panelWindow = null;
     currentPanel = null;
+  });
+
+  // Handle click-through messages from renderer
+  ipcMain.on('set-click-through', (event, clickThrough) => {
+    if (panelWindow && !panelWindow.isDestroyed()) {
+      panelWindow.setIgnoreMouseEvents(clickThrough, { forward: true });
+    }
   });
 }
 
@@ -574,10 +678,10 @@ function createModeSelector() {
   
   const { height } = screen.getPrimaryDisplay().workAreaSize;
   modeWindow = new BrowserWindow({
-    width: 240,
-    height: 280,
+    width: 140,
+    height: 180,
     x: 86,
-    y: Math.round((height - 280) / 2),
+    y: Math.round((height - 180) / 2),
     frame: false,
     transparent: true,
     alwaysOnTop: true,
@@ -727,23 +831,100 @@ function broadcastUpdate() {
 }
 
 app.whenReady().then(() => {
+  // Initialize paths
+  DB_PATH = path.join(app.getPath('userData'), 'gogh-data.json');
+  BOOKMARKS_DIR = path.join(app.getPath('userData'), 'bookmarks');
+  SETTINGS_PATH = path.join(app.getPath('userData'), 'settings.json');
+  APPS_CACHE_PATH = path.join(app.getPath('userData'), 'apps-cache.json');
+
+  if (!fs.existsSync(BOOKMARKS_DIR)) {
+    fs.mkdirSync(BOOKMARKS_DIR, { recursive: true });
+  }
+
+  // Reload settings and database with paths now available
+  settings = loadSettings();
+  database = loadDatabase();
+
+  // Load cached apps
+  loadAppsCache();
+
+  // Initialize ElectronOllama
+  const ollamaBasePath = app.getPath('userData');
+  const ollamaModelsPath = path.join(ollamaBasePath, 'ollama-models');
+
+  // Ensure models directory exists
+  if (!fs.existsSync(ollamaModelsPath)) {
+    fs.mkdirSync(ollamaModelsPath, { recursive: true });
+  }
+
+  eo = new ElectronOllama({
+    basePath: ollamaBasePath,
+    directory: 'ollama-binaries'
+  });
+
+  // Set OLLAMA_MODELS environment variable to persist models in app data
+  process.env.OLLAMA_MODELS = ollamaModelsPath;
+
+  ollamaClient = new ollama({ host: 'http://localhost:11434' });
+
+  console.log(`📁 Ollama binaries: ${path.join(ollamaBasePath, 'ollama-binaries')}`);
+  console.log(`📁 Ollama models: ${ollamaModelsPath}`);
+
   createSidebar();
   createCommandPalette();
-  
+
   const cmdShortcut = process.platform === 'darwin' ? 'Command+Shift+Space' : 'Control+Space';
   globalShortcut.register(cmdShortcut, toggleCommand);
-  
+
   globalShortcut.register('Escape', () => {
     if (panelWindow && !panelWindow.isDestroyed()) panelWindow.close();
     if (modeWindow && !modeWindow.isDestroyed()) modeWindow.close();
     if (graphWindow && !graphWindow.isDestroyed()) graphWindow.close();
     if (settingsWindow && !settingsWindow.isDestroyed()) settingsWindow.close();
   });
-  
+
   console.log('✅ Gogh Ready');
+
+  // Trigger background app scan if cache is empty or older than 24 hours
+  setTimeout(() => {
+    if (!cachedApps || cachedApps.length === 0) {
+      console.log('🔄 No apps cached, starting initial scan...');
+      scanAndCacheApps();
+    } else {
+      // Check cache age
+      try {
+        const cacheData = JSON.parse(fs.readFileSync(APPS_CACHE_PATH, 'utf8'));
+        const cacheAge = Date.now() - (cacheData.timestamp || 0);
+        const oneDayMs = 24 * 60 * 60 * 1000;
+
+        if (cacheAge > oneDayMs) {
+          console.log('🔄 Apps cache is old, refreshing...');
+          scanAndCacheApps();
+        }
+      } catch (e) {
+        // If error reading cache age, rescan
+        scanAndCacheApps();
+      }
+    }
+  }, 2000); // Wait 2 seconds after startup
 });
 
-app.on('will-quit', () => globalShortcut.unregisterAll());
+app.on('will-quit', async () => {
+  globalShortcut.unregisterAll();
+  // Stop Ollama server if running
+  if (eo) {
+    const server = eo.getServer();
+    if (server) {
+      try {
+        await server.stop();
+        console.log('✅ Ollama server stopped');
+      } catch (e) {
+        console.error('Error stopping Ollama:', e);
+      }
+    }
+  }
+});
+
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
 });
@@ -772,8 +953,13 @@ ipcMain.handle('get-installed-apps', async () => {
 });
 
 // Separate search handlers
-ipcMain.handle('search-ai', async (_, query) => {
-  return await searchWithAI(query);
+ipcMain.handle('search-ai', async (event, query) => {
+  // Create streaming callback that sends chunks to renderer
+  const streamCallback = (partialText) => {
+    event.sender.send('ai-search-chunk', partialText);
+  };
+
+  return await searchWithAI(query, streamCallback);
 });
 
 ipcMain.handle('search-google', async (_, query) => {
@@ -786,20 +972,61 @@ ipcMain.handle('search-local', async (_, query) => {
   return { files: fileResults, apps: appResults };
 });
 
+ipcMain.handle('refresh-apps-cache', async () => {
+  try {
+    const apps = await scanAndCacheApps();
+    return { success: true, count: apps.length };
+  } catch (error) {
+    console.error('Error refreshing apps cache:', error);
+    return { success: false, error: error.message };
+  }
+});
+
 // Execute search result
 ipcMain.handle('execute-result', async (_, result) => {
-  switch (result.action) {
-    case 'open_file':
-      await shell.openPath(result.path);
-      break;
-    case 'launch_app':
-      await shell.openPath(result.path);
-      break;
-    case 'open_url':
-      await shell.openExternal(result.url);
-      break;
+  try {
+    switch (result.action) {
+      case 'open_file':
+        if (!result.path || !fs.existsSync(result.path)) {
+          console.error('File not found:', result.path);
+          return false;
+        }
+        const fileResult = await shell.openPath(result.path);
+        if (fileResult) {
+          console.error('Error opening file:', fileResult);
+          return false;
+        }
+        break;
+
+      case 'launch_app':
+        if (!result.path || !fs.existsSync(result.path)) {
+          console.error('App not found:', result.path);
+          return false;
+        }
+        const appResult = await shell.openPath(result.path);
+        if (appResult) {
+          console.error('Error launching app:', appResult);
+          return false;
+        }
+        break;
+
+      case 'open_url':
+        if (!result.url) {
+          console.error('Invalid URL:', result.url);
+          return false;
+        }
+        await shell.openExternal(result.url);
+        break;
+
+      default:
+        console.error('Unknown action:', result.action);
+        return false;
+    }
+    return true;
+  } catch (error) {
+    console.error('Error executing result:', error);
+    return false;
   }
-  return true;
 });
 
 // Settings
@@ -891,9 +1118,27 @@ ipcMain.handle('remove-app', (_, id) => {
 });
 
 ipcMain.handle('launch-app', async (_, appPath) => {
-  if (!appPath || appPath === 'undefined') return false;
+  if (!appPath || appPath === 'undefined') {
+    console.error('Invalid app path:', appPath);
+    return false;
+  }
+
   try {
-    await shell.openPath(appPath);
+    // Validate path exists
+    if (!fs.existsSync(appPath)) {
+      console.error('App path does not exist:', appPath);
+      return false;
+    }
+
+    // Use shell.openPath for launching
+    const result = await shell.openPath(appPath);
+
+    // If result is not empty string, there was an error
+    if (result) {
+      console.error('Error launching app:', result);
+      return false;
+    }
+
     return true;
   } catch (error) {
     console.error('Error launching app:', error);
@@ -1003,6 +1248,44 @@ ipcMain.handle('switch-mode', (_, id) => {
   return database;
 });
 
+ipcMain.handle('delete-mode', (_, id) => {
+  if (id === 'default') {
+    return database;
+  }
+  database.modes = database.modes.filter(m => m.id !== id);
+  // Move all data from deleted mode to default
+  database.files.forEach(f => { if (f.mode === id) f.mode = 'default'; });
+  database.bookmarks.forEach(b => { if (b.mode === id) b.mode = 'default'; });
+  database.apps.forEach(a => { if (a.mode === id) a.mode = 'default'; });
+  database.tasks.forEach(t => { if (t.mode === id) t.mode = 'default'; });
+  database.intents.forEach(i => { if (i.mode === id) i.mode = 'default'; });
+  if (database.currentMode === id) {
+    database.currentMode = 'default';
+  }
+  saveDatabase(database);
+  broadcastUpdate();
+  return database;
+});
+
+ipcMain.handle('reset-database', () => {
+  database = {
+    modes: [
+      { id: 'default', name: 'Work', color: '#ffffff' }
+    ],
+    files: [],
+    bookmarks: [],
+    apps: [],
+    tasks: [],
+    intents: [],
+    events: [],
+    connections: [],
+    currentMode: 'default'
+  };
+  saveDatabase(database);
+  broadcastUpdate();
+  return true;
+});
+
 ipcMain.handle('hide-command', () => {
   if (commandWindow && !commandWindow.isDestroyed()) {
     commandWindow.hide();
@@ -1026,5 +1309,281 @@ ipcMain.handle('delete-all-data', () => {
   };
   saveDatabase(database);
   broadcastUpdate();
+  return true;
+});
+
+// Ollama IPC Handlers
+ipcMain.handle('start-ollama', async (event) => {
+  try {
+    if (isOllamaStarting) {
+      return { status: 'starting', message: 'Ollama is already starting...' };
+    }
+
+    const isRunning = await eo.isRunning();
+
+    if (isRunning) {
+      return { status: 'running', message: 'Ollama is already running' };
+    }
+
+    isOllamaStarting = true;
+
+    // Get metadata first to determine version
+    const metadata = await eo.getMetadata('latest');
+    const version = metadata.version;
+
+    // Check if this specific version is already downloaded
+    const isDownloaded = await eo.isDownloaded(version);
+
+    if (isDownloaded) {
+      console.log(`Ollama ${version} already downloaded, starting existing installation...`);
+    } else {
+      console.log(`Ollama ${version} not found, will download...`);
+    }
+
+    await eo.serve(version, {
+      env: {
+        OLLAMA_MODELS: process.env.OLLAMA_MODELS
+      },
+      serverLog: (message) => {
+        console.log('[Ollama Server]', message);
+        if (panelWindow && !panelWindow.isDestroyed()) {
+          panelWindow.webContents.send('ollama-log', message);
+        }
+      },
+      downloadLog: (percent, message) => {
+        console.log(`[Ollama Download] ${percent}%`, message);
+        if (panelWindow && !panelWindow.isDestroyed()) {
+          panelWindow.webContents.send('ollama-download-progress', { percent, message });
+        }
+      },
+      timeoutSec: 60
+    });
+
+    isOllamaStarting = false;
+
+    return {
+      status: 'started',
+      message: 'Ollama server started successfully',
+      version: version
+    };
+
+  } catch (error) {
+    isOllamaStarting = false;
+    console.error('Failed to start Ollama:', error);
+    return {
+      status: 'error',
+      message: error.message
+    };
+  }
+});
+
+ipcMain.handle('check-ollama-status', async () => {
+  try {
+    const isRunning = await eo.isRunning();
+    return { isRunning };
+  } catch (error) {
+    return { isRunning: false };
+  }
+});
+
+ipcMain.handle('chat-with-ollama', async (event, message) => {
+  const modelName = 'qwen2.5:0.5b';
+
+  try {
+    // First check if model exists
+    try {
+      const models = await ollamaClient.list();
+      const modelExists = models.models.some(m => m.name === modelName || m.name.startsWith('qwen2.5:0.5b'));
+
+      if (!modelExists) {
+        console.log(`Model ${modelName} not found locally, pulling...`);
+        if (panelWindow && !panelWindow.isDestroyed()) {
+          panelWindow.webContents.send('ollama-log', `Downloading model ${modelName}...`);
+        }
+
+        const pullStream = await ollamaClient.pull({
+          model: modelName,
+          stream: true
+        });
+
+        for await (const progress of pullStream) {
+          if (progress.status) {
+            console.log(`Pull progress: ${progress.status}`);
+            if (panelWindow && !panelWindow.isDestroyed()) {
+              panelWindow.webContents.send('ollama-log', progress.status);
+            }
+          }
+        }
+
+        console.log(`Model ${modelName} pulled successfully`);
+      } else {
+        console.log(`Model ${modelName} already available`);
+      }
+    } catch (listError) {
+      console.error('Error checking models:', listError);
+    }
+
+    const response = await ollamaClient.chat({
+      model: modelName,
+      messages: [{ role: 'user', content: message }],
+      stream: true,
+    });
+
+    for await (const chunk of response) {
+      if (chunk.message && chunk.message.content) {
+        if (panelWindow && !panelWindow.isDestroyed()) {
+          panelWindow.webContents.send('ollama-chunk', chunk.message.content);
+        }
+      }
+    }
+
+    if (panelWindow && !panelWindow.isDestroyed()) {
+      panelWindow.webContents.send('ollama-done');
+    }
+
+    return { status: 'success' };
+  } catch (error) {
+    console.error('Chat error:', error);
+
+    // If model not found, pull it
+    if (error.status_code === 404 || error.error?.includes('not found')) {
+      console.log(`Model ${modelName} not found, pulling...`);
+
+      if (panelWindow && !panelWindow.isDestroyed()) {
+        panelWindow.webContents.send('ollama-log', `Downloading model ${modelName}...`);
+      }
+
+      try {
+        const pullStream = await ollamaClient.pull({
+          model: modelName,
+          stream: true
+        });
+
+        for await (const progress of pullStream) {
+          if (progress.status) {
+            console.log(`Pull progress: ${progress.status}`);
+            if (panelWindow && !panelWindow.isDestroyed()) {
+              panelWindow.webContents.send('ollama-log', progress.status);
+            }
+          }
+        }
+
+        console.log(`Model ${modelName} pulled successfully, retrying chat...`);
+
+        // Retry the chat after pulling
+        const retryResponse = await ollamaClient.chat({
+          model: modelName,
+          messages: [{ role: 'user', content: message }],
+          stream: true,
+        });
+
+        for await (const chunk of retryResponse) {
+          if (chunk.message && chunk.message.content) {
+            if (panelWindow && !panelWindow.isDestroyed()) {
+              panelWindow.webContents.send('ollama-chunk', chunk.message.content);
+            }
+          }
+        }
+
+        if (panelWindow && !panelWindow.isDestroyed()) {
+          panelWindow.webContents.send('ollama-done');
+        }
+
+        return { status: 'success' };
+      } catch (pullError) {
+        console.error('Model pull failed:', pullError);
+        return { status: 'error', message: `Failed to download model: ${pullError.message}` };
+      }
+    }
+
+    return { status: 'error', message: error.message };
+  }
+});
+
+// Chat History Operations
+ipcMain.handle('get-chat-history', (_, mode) => {
+  if (!database || !database.chatHistory) {
+    return [];
+  }
+  return database.chatHistory[mode] || [];
+});
+
+ipcMain.handle('save-chat-history', (_, { mode, messages }) => {
+  if (!database) {
+    return false;
+  }
+  if (!database.chatHistory) {
+    database.chatHistory = {};
+  }
+  database.chatHistory[mode] = messages;
+  saveDatabase(database);
+  return true;
+});
+
+ipcMain.handle('clear-chat-history', (_, mode) => {
+  if (!database || !database.chatHistory) {
+    return false;
+  }
+  if (mode) {
+    database.chatHistory[mode] = [];
+  } else {
+    database.chatHistory = {};
+  }
+  saveDatabase(database);
+  return true;
+});
+
+// Export response to file
+ipcMain.handle('export-response', async (_, { content, format }) => {
+  try {
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+    const extension = format === 'docx' ? 'docx' : 'md';
+    const fileName = `response-${timestamp}.${extension}`;
+
+    const { filePath } = await dialog.showSaveDialog({
+      title: 'Export Response',
+      defaultPath: path.join(app.getPath('downloads'), fileName),
+      filters: [
+        { name: format === 'docx' ? 'Word Document' : 'Markdown', extensions: [extension] }
+      ]
+    });
+
+    if (!filePath) {
+      return { success: false, message: 'Cancelled' };
+    }
+
+    if (format === 'docx') {
+      // For DOCX, we need to create a proper Word document
+      // Using a simple approach: create an HTML file that Word can open
+      const htmlContent = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    body { font-family: Arial, sans-serif; line-height: 1.6; padding: 20px; }
+    code { background: #f4f4f4; padding: 2px 6px; border-radius: 3px; }
+    pre { background: #f4f4f4; padding: 10px; border-radius: 5px; overflow-x: auto; }
+    strong { font-weight: bold; }
+    em { font-style: italic; }
+  </style>
+</head>
+<body>
+${content.replace(/\n/g, '<br>')}
+</body>
+</html>`;
+
+      // Save as .docx (Word can open HTML files)
+      fs.writeFileSync(filePath, htmlContent, 'utf8');
+    } else {
+      // For Markdown, save as-is
+      fs.writeFileSync(filePath, content, 'utf8');
+    }
+
+    return { success: true, filePath };
+  } catch (error) {
+    console.error('Export error:', error);
+    return { success: false, message: error.message };
+  }
   return true;
 });
