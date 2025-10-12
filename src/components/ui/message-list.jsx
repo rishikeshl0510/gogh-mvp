@@ -1,4 +1,6 @@
 import React, { useState } from 'react';
+import ChainOfThought from '../ChainOfThought';
+import { ToolCallMessage } from '../ToolCallMessage';
 
 // Simple markdown renderer for code blocks and formatting
 function renderMarkdown(text) {
@@ -25,7 +27,7 @@ function renderMarkdown(text) {
   return text;
 }
 
-export function MessageList({ messages = [], isTyping = false, onEditMessage }) {
+export function MessageList({ messages = [], isTyping = false, onEditMessage, onRetryMessage }) {
   const [copiedId, setCopiedId] = useState(null);
   const [exportingId, setExportingId] = useState(null);
   const [editingId, setEditingId] = useState(null);
@@ -92,7 +94,6 @@ export function MessageList({ messages = [], isTyping = false, onEditMessage }) 
         if (message.role === 'thinking') {
           return (
             <div key={message.id || index} className="qa-block thinking-block">
-              <div className="qa-label thinking-label">A</div>
               <div className="thinking-crt">
                 <div className="crt-scanline"></div>
                 <div className="crt-text">
@@ -113,7 +114,6 @@ export function MessageList({ messages = [], isTyping = false, onEditMessage }) 
           if (editingId === message.id) {
             return (
               <div key={message.id || index} className="qa-block user-block editing">
-                <div className="qa-label">Q</div>
                 <div className="qa-content">
                   <input
                     type="text"
@@ -138,23 +138,60 @@ export function MessageList({ messages = [], isTyping = false, onEditMessage }) 
             <div
               key={message.id || index}
               className="qa-block user-block"
-              onDoubleClick={() => handleDoubleClick(message)}
-              title="Double-click to edit"
             >
-              <div className="qa-label">Q</div>
-              <div className="qa-content">{message.content}</div>
+              <div className="qa-content">
+                {message.content}
+                <div className="qa-actions">
+                  <button
+                    className="qa-action-btn"
+                    onClick={() => handleDoubleClick(message)}
+                    title="Edit message"
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                      <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+                    </svg>
+                  </button>
+                </div>
+              </div>
             </div>
           );
         }
 
         return (
           <div key={message.id || index} className="qa-block assistant-block">
-            <div className="qa-label">A</div>
             <div className="qa-content">
+              {message.thoughts && message.thoughts.length > 0 && (
+                <div style={{ marginBottom: '12px' }}>
+                  <ChainOfThought thoughts={message.thoughts} />
+                </div>
+              )}
+              {message.toolCalls && message.toolCalls.length > 0 && (
+                <div style={{ marginBottom: '12px' }}>
+                  {message.toolCalls.map((toolCall, idx) => (
+                    <ToolCallMessage
+                      key={idx}
+                      toolName={toolCall.toolName}
+                      args={toolCall.args}
+                      result={toolCall.result}
+                      query={toolCall.query}
+                    />
+                  ))}
+                </div>
+              )}
               <div
                 dangerouslySetInnerHTML={{ __html: renderMarkdown(message.content) }}
               />
               <div className="qa-actions">
+                <button
+                  className="qa-action-btn"
+                  onClick={() => onRetryMessage && onRetryMessage(message.id)}
+                  title="Retry generation"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/>
+                  </svg>
+                </button>
                 <button
                   className="qa-action-btn"
                   onClick={() => copyToClipboard(message.content, message.id)}
@@ -216,7 +253,6 @@ export function MessageList({ messages = [], isTyping = false, onEditMessage }) 
       })}
       {isTyping && (
         <div className="qa-block assistant-block">
-          <div className="qa-label">A</div>
           <div className="qa-content">
             <div className="typing-indicator">
               <span className="dot"></span>

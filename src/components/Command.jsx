@@ -34,12 +34,30 @@ export default function Command() {
     };
   }, [input, aiEnabled]);
 
+  const fuzzyMatch = (str, pattern) => {
+    const strLower = str.toLowerCase();
+    const patternLower = pattern.toLowerCase();
+    let patternIdx = 0;
+    let score = 0;
+    let lastMatchIdx = -1;
+
+    for (let i = 0; i < strLower.length && patternIdx < patternLower.length; i++) {
+      if (strLower[i] === patternLower[patternIdx]) {
+        score += (lastMatchIdx === i - 1) ? 2 : 1;
+        lastMatchIdx = i;
+        patternIdx++;
+      }
+    }
+
+    if (patternIdx !== patternLower.length) return 0;
+    return score;
+  };
+
   const performSearch = async (query) => {
     setLoading(true);
     setAiResult(null);
 
     try {
-      // Start local search immediately
       const localResults = await window.commandAPI.searchLocal(query);
 
       let resultArray = [];
@@ -51,7 +69,16 @@ export default function Command() {
         resultArray = localResults;
       }
 
-      setResults(resultArray);
+      // Fuzzy filter and sort by score
+      const filtered = resultArray
+        .map(item => ({
+          ...item,
+          score: fuzzyMatch(item.title || item.name || '', query)
+        }))
+        .filter(item => item.score > 0)
+        .sort((a, b) => b.score - a.score);
+
+      setResults(filtered);
       setSelectedIndex(-1);
       setLoading(false);
 

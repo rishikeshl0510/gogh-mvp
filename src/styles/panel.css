@@ -1150,7 +1150,7 @@ body {
 }
 
 .edit-input:focus {
-  border-color: rgba(100, 200, 255, 0.5);
+  border-color: rgba(255, 255, 255, 0.5);
   background: rgba(255, 255, 255, 0.1);
 }
 
@@ -1519,8 +1519,81 @@ body {
 
 .message-input-container {
   display: flex;
+  flex-direction: column;
   gap: 8px;
+}
+
+.input-row {
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+}
+
+.attached-files {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.attached-file {
+  display: flex;
   align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 6px;
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.remove-file-btn {
+  width: 16px;
+  height: 16px;
+  background: rgba(255, 80, 80, 0.2);
+  border: 1px solid rgba(255, 80, 80, 0.3);
+  border-radius: 50%;
+  color: rgba(255, 80, 80, 0.9);
+  font-size: 14px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s;
+  font-family: 'IBM Plex Mono', monospace;
+  padding: 0;
+  line-height: 1;
+}
+
+.remove-file-btn:hover {
+  background: rgba(255, 80, 80, 0.3);
+  border-color: rgba(255, 80, 80, 0.5);
+  color: #fff;
+}
+
+.attach-btn {
+  width: 36px;
+  height: 36px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 8px;
+  color: rgba(255, 255, 255, 0.7);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s;
+  flex-shrink: 0;
+}
+
+.attach-btn:hover {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.25);
+  color: rgba(255, 255, 255, 0.95);
 }
 
 .message-input {
@@ -1534,11 +1607,15 @@ body {
   font-family: 'IBM Plex Mono', monospace;
   outline: none;
   transition: all 0.15s;
+  resize: none;
+  min-height: 40px;
+  max-height: 150px;
+  overflow-y: auto;
 }
 
 .message-input:focus {
   background: rgba(255, 255, 255, 0.12);
-  border-color: rgba(100, 200, 255, 0.4);
+  border-color: rgba(255, 255, 255, 0.4);
 }
 
 .message-input::placeholder {
@@ -1554,27 +1631,27 @@ body {
 .crt-send-btn {
   width: 36px;
   height: 36px;
-  background: rgba(100, 200, 255, 0.15);
-  border: 1px solid rgba(100, 200, 255, 0.4);
+  background: rgba(255, 255, 255, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.4);
   border-radius: 50%;
-  color: rgba(100, 200, 255, 0.95);
+  color: rgba(255, 255, 255, 0.95);
   cursor: pointer;
   transition: all 0.2s;
   display: flex;
   align-items: center;
   justify-content: center;
   box-shadow:
-    0 0 15px rgba(100, 200, 255, 0.3),
-    inset 0 0 10px rgba(100, 200, 255, 0.1);
+    0 0 15px rgba(255, 255, 255, 0.3),
+    inset 0 0 10px rgba(255, 255, 255, 0.1);
 }
 
 .crt-send-btn:hover:not(:disabled) {
-  background: rgba(100, 200, 255, 0.25);
-  border-color: rgba(100, 200, 255, 0.6);
+  background: rgba(255, 255, 255, 0.25);
+  border-color: rgba(255, 255, 255, 0.6);
   box-shadow:
-    0 0 25px rgba(100, 200, 255, 0.5),
-    0 0 15px rgba(100, 200, 255, 0.3),
-    inset 0 0 15px rgba(100, 200, 255, 0.2);
+    0 0 25px rgba(255, 255, 255, 0.5),
+    0 0 15px rgba(255, 255, 255, 0.3),
+    inset 0 0 15px rgba(255, 255, 255, 0.2);
   transform: scale(1.05);
 }
 
@@ -1619,8 +1696,8 @@ body {
 
 .suggestion-button:hover {
   background: rgba(255, 255, 255, 0.1);
-  border-color: rgba(100, 200, 255, 0.3);
-  color: rgba(100, 200, 255, 0.9);
+  border-color: rgba(255, 255, 255, 0.3);
+  color: rgba(255, 255, 255, 0.95);
 }
 
 .model-status {
@@ -1758,9 +1835,9 @@ body {
 
 .copy-message-btn:hover {
   background: rgba(255, 255, 255, 0.15);
-  border-color: rgba(100, 200, 255, 0.4);
-  color: rgba(100, 200, 255, 0.95);
-  box-shadow: 0 0 10px rgba(100, 200, 255, 0.2);
+  border-color: rgba(255, 255, 255, 0.4);
+  color: rgba(255, 255, 255, 0.95);
+  box-shadow: 0 0 10px rgba(255, 255, 255, 0.2);
 }
 
 /* Code Blocks */
@@ -1802,9 +1879,9 @@ body {
 }
 
 .copy-code-btn:hover {
-  background: rgba(100, 200, 255, 0.15);
-  border-color: rgba(100, 200, 255, 0.4);
-  color: rgba(100, 200, 255, 0.95);
+  background: rgba(255, 255, 255, 0.15);
+  border-color: rgba(255, 255, 255, 0.4);
+  color: rgba(255, 255, 255, 0.95);
 }
 
 .code-block pre {
@@ -1822,12 +1899,12 @@ body {
 
 .inline-code {
   padding: 2px 6px;
-  background: rgba(100, 200, 255, 0.15);
-  border: 1px solid rgba(100, 200, 255, 0.25);
+  background: rgba(255, 255, 255, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.25);
   border-radius: 4px;
   font-family: 'IBM Plex Mono', monospace;
   font-size: 11px;
-  color: rgba(100, 200, 255, 0.95);
+  color: rgba(255, 255, 255, 0.95);
 }
 
 /* Thinking State */

@@ -4,5 +4,10 @@
     "paths": {
       "@/*": ["./src/*"]
     }
-  }
+  },
+  "exclude": [
+    "node_modules",
+    "dist",
+    "C:/Users/sathy/AppData/Local/Microsoft/TypeScript"
+  ]
 }

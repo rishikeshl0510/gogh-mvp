@@ -70,7 +70,7 @@ Today is ${new Date().toISOString().split('T')[0]}`;
     const response = await axios.post(
       `${OLLAMA_URL}/api/generate`,
       {
-        model: process.env.OLLAMA_MODEL || 'qwen2.5:0.5b',
+        model: process.env.OLLAMA_MODEL || 'llama3.2:1b',
         prompt: prompt,
         stream: false,
         options: {
@@ -156,7 +156,7 @@ Today is ${new Date().toISOString().split('T')[0]}`;
     const response = await axios.post(
       `${OLLAMA_URL}/api/generate`,
       {
-        model: process.env.OLLAMA_MODEL || 'qwen2.5:0.5b',
+        model: process.env.OLLAMA_MODEL || 'llama3.2:1b',
         prompt: prompt,
         stream: false,
         options: {
@@ -250,6 +250,6 @@ app.post('/chat', async (req, res) => {
 app.listen(PORT, () => {
   console.log(`🚀 LLM Server running on http://localhost:${PORT}`);
   console.log(`📡 Ollama URL: ${OLLAMA_URL}`);
-  console.log(`🤖 Default model: ${process.env.OLLAMA_MODEL || 'qwen2.5:0.5b'}`);
+  console.log(`🤖 Default model: ${process.env.OLLAMA_MODEL || 'llama3.2:1b'}`);
 });
 
