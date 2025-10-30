@@ -3,7 +3,7 @@ import { ChatContainer, ChatMessages, ChatForm, PromptSuggestions } from './ui/c
 import { MessageList } from './ui/message-list';
 import { MessageInput } from './ui/message-input';
 import FileTreeView from './FileTreeView';
-import FileGraphView from './Graph';
+import FileGraphView from './FileGraphView';
 import MCPSettings, { MCPDialog } from './MCPSettings';
 import ChainOfThought from './ChainOfThought';
 import TaskWidget from './TaskWidget';
@@ -411,7 +411,7 @@ function FilesWidget({ data, currentTab, setCurrentTab }) {
           Apps
         </div>
       </div>
-      <div style={{ display: currentTab === 'files' ? 'flex' : 'none', flexDirection: 'column', flex: 1, minHeight: 0 }}>
+      <div style={{ display: currentTab === 'files' ? 'flex' : 'none', flexDirection: 'column', flex: 1, minHeight: 0, height: '100%' }}>
         <FilesTab data={data} />
       </div>
       <div style={{ display: currentTab === 'bookmarks' ? 'flex' : 'none', flexDirection: 'column', flex: 1, minHeight: 0 }}>
@@ -429,16 +429,16 @@ function FilesTab({ data }) {
   const [searchQuery, setSearchQuery] = useState('');
 
   return (
-    <>
+    <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
       <input
         type="text"
         className="quick-input"
         placeholder="Search files..."
         value={searchQuery}
         onChange={(e) => setSearchQuery(e.target.value)}
-        style={{ marginBottom: '8px', padding: '6px 10px', fontSize: '10px', width: '100%' }}
+        style={{ marginBottom: '8px', padding: '6px 10px', fontSize: '10px', width: '100%', flexShrink: 0 }}
       />
-      <div style={{ display: 'flex', gap: '4px', marginBottom: '8px' }}>
+      <div style={{ display: 'flex', gap: '4px', marginBottom: '8px', flexShrink: 0 }}>
         <button
           className={`toggle-btn ${viewMode === 'tree' ? 'active' : ''}`}
           onClick={() => setViewMode('tree')}
@@ -465,12 +465,14 @@ function FilesTab({ data }) {
         </button>
       </div>
 
-      {viewMode === 'tree' ? (
-        <FileTreeView data={data} searchQuery={searchQuery} />
-      ) : (
-        <FileGraphView data={data} searchQuery={searchQuery} />
-      )}
-    </>
+      <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+        {viewMode === 'tree' ? (
+          <FileTreeView data={data} searchQuery={searchQuery} />
+        ) : (
+          <FileGraphView data={data} searchQuery={searchQuery} />
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -1046,10 +1048,17 @@ function CompactTaskList({ intents, data }) {
         const daysLeft = Math.ceil((end - now) / (1000 * 60 * 60 * 24));
 
         return (
-          <div key={task.id} className="compact-task">
-            <input type="checkbox" className="task-check" onChange={() => toggleTask(task.id)} />
+          <div key={task.id} className="compact-task" style={{ borderLeft: `3px solid ${task.color || '#3B82F6'}` }}>
+            <input
+              type="checkbox"
+              className="task-check"
+              checked={task.completed || false}
+              onChange={() => toggleTask(task.id)}
+            />
             <span className="task-title">{task.title}</span>
-            <span className="task-due">{daysLeft > 0 ? `${daysLeft}d` : daysLeft === 0 ? 'Today' : 'Late'}</span>
+            <span className="task-due" style={{ color: task.color || '#3B82F6' }}>
+              {daysLeft > 0 ? `${daysLeft}d` : daysLeft === 0 ? 'Today' : 'Late'}
+            </span>
           </div>
         );
       })}
@@ -1117,12 +1126,14 @@ function TaskItem({ task, onToggle, onDelete, completed }) {
   const daysLeft = Math.ceil((end - now) / (1000 * 60 * 60 * 24));
 
   return (
-    <div className={`task-item ${completed ? 'completed' : ''}`}>
+    <div className={`task-item ${completed ? 'completed' : ''}`} style={{ borderLeft: `3px solid ${task.color || '#3B82F6'}` }}>
       <input type="checkbox" className="task-check" checked={task.completed} onChange={() => onToggle(task.id)} />
       <div className="task-info">
         <div className="task-title">{task.title}</div>
         {!completed && (
-          <div className="task-meta">{daysLeft > 0 ? `${daysLeft}d left` : daysLeft === 0 ? 'Today' : 'Overdue'}</div>
+          <div className="task-meta" style={{ color: task.color || '#3B82F6' }}>
+            {daysLeft > 0 ? `${daysLeft}d left` : daysLeft === 0 ? 'Today' : 'Overdue'}
+          </div>
         )}
       </div>
       <button className="task-delete" onClick={() => onDelete(task.id)}>×</button>
@@ -1260,11 +1271,16 @@ function MatrixTask({ task, onToggle }) {
   const daysLeft = Math.ceil((end - now) / (1000 * 60 * 60 * 24));
 
   return (
-    <div className="matrix-task">
-      <input type="checkbox" className="task-check" onChange={() => onToggle(task.id)} />
+    <div className="matrix-task" style={{ borderLeft: `3px solid ${task.color || '#3B82F6'}` }}>
+      <input
+        type="checkbox"
+        className="task-check"
+        checked={task.completed || false}
+        onChange={() => onToggle(task.id)}
+      />
       <div className="matrix-task-text">
         <div className="matrix-task-title">{task.title}</div>
-        <div className="matrix-task-due">{daysLeft}d</div>
+        <div className="matrix-task-due" style={{ color: task.color || '#3B82F6' }}>{daysLeft}d</div>
       </div>
     </div>
   );

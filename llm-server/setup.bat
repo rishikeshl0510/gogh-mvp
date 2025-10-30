@@ -14,8 +14,8 @@ if %errorlevel% neq 0 (
 echo Ollama is installed
 
 REM Pull recommended model
-echo Pulling qwen2.5:0.5b model (this may take a few minutes)...
-ollama pull qwen2.5:0.5b
+echo Pulling llama3.2:1b model (this may take a few minutes)...
+ollama pull llama3.2:1b
 
 REM Install npm dependencies
 echo Installing npm dependencies...
@@ -28,7 +28,7 @@ if not exist .env (
         echo # LLM Server Configuration
         echo LLM_PORT=3001
         echo OLLAMA_URL=http://localhost:11434
-        echo OLLAMA_MODEL=qwen2.5:0.5b
+        echo OLLAMA_MODEL=llama3.2:1b
     ) > .env
     echo Created .env file
 )

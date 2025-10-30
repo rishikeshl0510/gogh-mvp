@@ -11,7 +11,7 @@ Local LLM server using Ollama for the Gogh AI Palette application.
 2. **Pull a Model**
    ```bash
    # Recommended lightweight model (500MB)
-   ollama pull qwen2.5:0.5b
+   ollama pull llama3.2:1b
    
    # Alternative models
    ollama pull llama3.2:1b      # 1.3GB
@@ -36,7 +36,7 @@ npm install
 2. Edit `.env` to configure your settings:
    - `LLM_PORT`: Port for the LLM server (default: 3001)
    - `OLLAMA_URL`: Ollama API URL (default: http://localhost:11434)
-   - `OLLAMA_MODEL`: Model to use (default: qwen2.5:0.5b)
+   - `OLLAMA_MODEL`: Model to use (default: llama3.2:1b)
 
 ## Running the Server
 
@@ -95,7 +95,7 @@ Content-Type: application/json
 
 {
   "message": "What's the weather like?",
-  "model": "qwen2.5:0.5b"  // optional
+  "model": "llama3.2:1b"  // optional
 }
 ```
 Returns AI response.
@@ -117,7 +117,7 @@ Example integration code is provided in `integration-example.js`.
 - Check if Ollama is accessible: `curl http://localhost:11434/api/tags`
 
 **Model not found:**
-- Pull the model: `ollama pull qwen2.5:0.5b`
+- Pull the model: `ollama pull llama3.2:1b`
 - List available models: `ollama list`
 
 **Server errors:**
@@ -128,7 +128,7 @@ Example integration code is provided in `integration-example.js`.
 ## Performance Tips
 
 1. **Choose the right model:**
-   - `qwen2.5:0.5b` - Fastest, ~500MB, good for quick tasks
+   - `llama3.2:1b` - Fastest, ~500MB, good for quick tasks
    - `llama3.2:1b` - Balanced, ~1.3GB, better quality
    - `gemma2:2b` - Higher quality, ~1.6GB, slower
    - `phi3:mini` - Best quality, ~2.3GB, slowest

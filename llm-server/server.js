@@ -221,7 +221,7 @@ app.post('/chat', async (req, res) => {
     const response = await axios.post(
       `${OLLAMA_URL}/api/generate`,
       {
-        model: model || process.env.OLLAMA_MODEL || 'qwen2.5:0.5b',
+        model: model || process.env.OLLAMA_MODEL || 'llama3.2:1b',
         prompt: message,
         stream: false,
         options: {

@@ -1,0 +1,27 @@
+execution_engine: asyncio
+logger:
+  transports: [console, file]
+  level: debug
+  path: "logs/mcp-agent.jsonl"
+
+mcp:
+  servers:
+    fetch:
+      command: "uvx"
+      args: ["mcp-server-fetch"]
+      description: "Fetch content from URLs"
+
+    filesystem:
+      command: "npx"
+      args:
+        [
+          "-y",
+          "@modelcontextprotocol/server-filesystem",
+          "C:/Users",  # Update this path to your workspace
+        ]
+      description: "Access filesystem operations"
+
+ollama:
+  base_url: "http://localhost:11434"
+  default_model: "llama3.2:1b"  # Or phi3:mini, llama3.2:1b, mistral, etc.
+  timeout: 120

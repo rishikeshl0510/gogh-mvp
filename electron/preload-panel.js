@@ -100,6 +100,7 @@ contextBridge.exposeInMainWorld('panelAPI', {
   startOllama: () => ipcRenderer.invoke('start-ollama'),
   checkOllamaStatus: () => ipcRenderer.invoke('check-ollama-status'),
   chatWithOllama: (message) => ipcRenderer.invoke('chat-with-ollama', message),
+  chatWithPythonMCP: (message, model) => ipcRenderer.invoke('chat-with-python-mcp', { message, model }),
   stopOllamaGeneration: () => ipcRenderer.invoke('stop-ollama-generation'),
   onOllamaChunk: (callback) => {
     const listener = (_, chunk) => callback(chunk);
@@ -145,11 +146,29 @@ contextBridge.exposeInMainWorld('panelAPI', {
   // Export APIs
   exportResponse: (content, format) => ipcRenderer.invoke('export-response', { content, format }),
 
-  // MCP APIs
+  // MCP APIs (Node.js Direct)
   getMCPConfig: () => ipcRenderer.invoke('get-mcp-config'),
   saveMCPServer: (config) => ipcRenderer.invoke('save-mcp-server', config),
   removeMCPServer: (serverName) => ipcRenderer.invoke('remove-mcp-server', serverName),
   getMCPTools: () => ipcRenderer.invoke('get-mcp-tools'),
   getMCPServers: () => ipcRenderer.invoke('get-mcp-servers'),
-  callMCPTool: (toolName, args) => ipcRenderer.invoke('call-mcp-tool', { toolName, args })
+  callMCPTool: (toolName, args) => ipcRenderer.invoke('call-mcp-tool', { toolName, args }),
+
+  // Python MCP Backend APIs
+  pythonMCPHealth: () => ipcRenderer.invoke('python-mcp-health'),
+  pythonMCPChat: (message, model) => ipcRenderer.invoke('python-mcp-chat', { message, model }),
+  pythonMCPGetTools: () => ipcRenderer.invoke('python-mcp-get-tools'),
+  startPythonMCPServer: () => ipcRenderer.invoke('start-python-mcp-server'),
+
+  // RAG APIs
+  ragIndexFiles: (filePaths) => ipcRenderer.invoke('rag-index-files', { filePaths }),
+  ragIndexText: (text, metadata) => ipcRenderer.invoke('rag-index-text', { text, metadata }),
+  ragQuery: (question, context) => ipcRenderer.invoke('rag-query', { question, context }),
+  ragUploadFile: (file) => ipcRenderer.invoke('rag-upload-file', file),
+  ragClear: () => ipcRenderer.invoke('rag-clear'),
+  ragStats: () => ipcRenderer.invoke('rag-stats'),
+  chatWithRAG: (message, model, useRag) => ipcRenderer.invoke('chat-with-rag', { message, model, useRag }),
+
+  // Generic invoke for future extensibility
+  invoke: (channel, data) => ipcRenderer.invoke(channel, data)
 });

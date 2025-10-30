@@ -75,7 +75,7 @@ Create an intelligent tagging agent that:
 
 #### Features
 - **Enable/Disable button**: Toggle auto-tagging via "Composer" button
-- **File analysis**: Use local LLM (Ollama qwen2.5:0.5b) to analyze:
+- **File analysis**: Use local LLM (Ollama llama3.2:1b) to analyze:
   - File name
   - File extension
   - File size

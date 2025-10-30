@@ -34,9 +34,8 @@ let APPS_CACHE_PATH;
 let cachedApps = null;
 let isScanningApps = false;
 let MCP_CONFIG_PATH;
+let PYTHON_MCP_CONFIG_PATH;
 let mcpManager = null;
-
-Menu.setApplicationMenu(null);
 
 // MCP Manager Class
 class MCPManager {
@@ -973,7 +972,7 @@ function broadcastUpdate() {
   }
 }
 
-// MCP Config Functions
+// MCP Config Functions (Node.js Direct)
 function loadMCPConfig() {
   try {
     if (MCP_CONFIG_PATH && fs.existsSync(MCP_CONFIG_PATH)) {
@@ -992,6 +991,40 @@ function saveMCPConfig(config) {
     return true;
   } catch (error) {
     console.error('MCP config save error:', error);
+    return false;
+  }
+}
+
+// Python MCP Backend Config Functions
+function loadPythonMCPConfig() {
+  try {
+    if (PYTHON_MCP_CONFIG_PATH && fs.existsSync(PYTHON_MCP_CONFIG_PATH)) {
+      const data = fs.readFileSync(PYTHON_MCP_CONFIG_PATH, 'utf8');
+      return JSON.parse(data);
+    }
+  } catch (error) {
+    console.error('Python MCP config load error:', error);
+  }
+  // Default configuration
+  return {
+    enabled: false,
+    url: 'http://localhost:8000',
+    defaultModel: 'llama3.2:1b',
+    autoStart: false,
+    serverPath: path.join(__dirname, '..', 'llm-server', 'python-mcp-backend'),
+    pythonPath: 'python', // or 'python3' on Unix
+    lastChecked: null,
+    status: 'unknown'
+  };
+}
+
+function savePythonMCPConfig(config) {
+  try {
+    fs.writeFileSync(PYTHON_MCP_CONFIG_PATH, JSON.stringify(config, null, 2));
+    console.log('✅ Python MCP config saved:', config);
+    return true;
+  } catch (error) {
+    console.error('Python MCP config save error:', error);
     return false;
   }
 }
@@ -1018,12 +1051,16 @@ async function initializeMCPServers() {
 }
 
 app.whenReady().then(async () => {
+  // Remove default menu
+  Menu.setApplicationMenu(null);
+
   // Initialize paths
   DB_PATH = path.join(app.getPath('userData'), 'gogh-data.json');
   BOOKMARKS_DIR = path.join(app.getPath('userData'), 'bookmarks');
   SETTINGS_PATH = path.join(app.getPath('userData'), 'settings.json');
   APPS_CACHE_PATH = path.join(app.getPath('userData'), 'apps-cache.json');
   MCP_CONFIG_PATH = path.join(app.getPath('userData'), 'mcp-config.json');
+  PYTHON_MCP_CONFIG_PATH = path.join(app.getPath('userData'), 'python-mcp-config.json');
 
   if (!fs.existsSync(BOOKMARKS_DIR)) {
     fs.mkdirSync(BOOKMARKS_DIR, { recursive: true });
@@ -1517,20 +1554,11 @@ ipcMain.handle('get-file-properties', async (_, filePath) => {
   }
 });
 
+// Removed basic RAG - will be replaced with LlamaIndex implementation
 ipcMain.handle('add-file-to-ai', async (_, filePath) => {
-  try {
-    const content = fs.readFileSync(filePath, 'utf8').slice(0, 10000);
-    if (!database.aiKnowledgeBase) database.aiKnowledgeBase = [];
-    database.aiKnowledgeBase.push({
-      filePath,
-      content,
-      addedAt: new Date().toISOString()
-    });
-    saveDatabase(database);
-    return true;
-  } catch (e) {
-    return false;
-  }
+  // TODO: Implement with LlamaIndex for proper vector storage and retrieval
+  console.log('add-file-to-ai: Feature pending LlamaIndex implementation');
+  return false;
 });
 
 ipcMain.handle('import-bookmarks-from-folder', async (_, folderPath) => {
@@ -2087,6 +2115,61 @@ ipcMain.handle('start-ollama', async (event) => {
         if (panelWindow && !panelWindow.isDestroyed()) {
           panelWindow.webContents.send('ollama-log', `⚠️ Model will be downloaded on first use: ${pullError.message}`);
         }
+      }
+    }
+
+    // Auto-start Python MCP Backend if enabled
+    const pythonConfig = loadPythonMCPConfig();
+    if (pythonConfig.autoStart || pythonConfig.enabled) {
+      console.log('🐍 Auto-starting Python MCP Backend...');
+      if (panelWindow && !panelWindow.isDestroyed()) {
+        panelWindow.webContents.send('ollama-log', '🐍 Starting Python MCP Backend...');
+      }
+
+      try {
+        // Check if already running
+        const healthCheck = await axios.get(`${pythonConfig.url}/health`, { timeout: 2000 }).catch(() => null);
+
+        if (!healthCheck) {
+          // Not running, start it
+          if (fs.existsSync(pythonConfig.serverPath)) {
+            const pythonProcess = crossSpawn(
+              pythonConfig.pythonPath,
+              ['agent_server.py'],
+              {
+                cwd: pythonConfig.serverPath,
+                detached: true,
+                stdio: 'ignore'
+              }
+            );
+            pythonProcess.unref();
+
+            // Wait and check
+            await new Promise(resolve => setTimeout(resolve, 3000));
+            const startCheck = await axios.get(`${pythonConfig.url}/health`, { timeout: 5000 }).catch(() => null);
+
+            if (startCheck) {
+              console.log('✅ Python MCP Backend started');
+              if (panelWindow && !panelWindow.isDestroyed()) {
+                panelWindow.webContents.send('ollama-log', '✅ Python MCP Backend is ready!');
+              }
+              pythonConfig.status = 'running';
+              savePythonMCPConfig(pythonConfig);
+            } else {
+              console.log('⚠️ Python MCP Backend may need more time to initialize');
+            }
+          } else {
+            console.log('⚠️ Python MCP Backend not found at:', pythonConfig.serverPath);
+          }
+        } else {
+          console.log('✅ Python MCP Backend already running');
+          if (panelWindow && !panelWindow.isDestroyed()) {
+            panelWindow.webContents.send('ollama-log', '✅ Python MCP Backend is already running');
+          }
+        }
+      } catch (pythonError) {
+        console.error('Python MCP Backend start error:', pythonError);
+        // Don't fail Ollama start if Python backend fails
       }
     }
 
@@ -2679,6 +2762,323 @@ ipcMain.handle('call-mcp-tool', async (_, { toolName, args }) => {
     }
   }
   return { success: false, error: 'MCP Manager not initialized' };
+});
+
+// Python MCP Backend IPC Handlers
+ipcMain.handle('python-mcp-chat', async (_, { message, model }) => {
+  try {
+    const config = loadPythonMCPConfig();
+    const response = await axios.post(`${config.url}/chat`, {
+      message,
+      model: model || config.defaultModel
+    });
+    return { success: true, response: response.data.response };
+  } catch (error) {
+    console.error('Python MCP chat error:', error.message);
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('python-mcp-get-tools', async () => {
+  try {
+    const config = loadPythonMCPConfig();
+    const response = await axios.get(`${config.url}/tools`);
+    return { success: true, tools: response.data.tools };
+  } catch (error) {
+    console.error('Python MCP get tools error:', error.message);
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('python-mcp-health', async () => {
+  try {
+    const config = loadPythonMCPConfig();
+    const response = await axios.get(`${config.url}/health`, { timeout: 5000 });
+
+    // Update config with last checked time and status
+    config.lastChecked = new Date().toISOString();
+    config.status = 'running';
+    savePythonMCPConfig(config);
+
+    return { success: true, status: response.data.status };
+  } catch (error) {
+    const config = loadPythonMCPConfig();
+    config.lastChecked = new Date().toISOString();
+    config.status = 'offline';
+    savePythonMCPConfig(config);
+
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('get-python-mcp-config', () => {
+  return loadPythonMCPConfig();
+});
+
+ipcMain.handle('save-python-mcp-config', (_, config) => {
+  const success = savePythonMCPConfig(config);
+  return { success };
+});
+
+ipcMain.handle('start-python-mcp-server', async () => {
+  try {
+    const config = loadPythonMCPConfig();
+
+    if (!fs.existsSync(config.serverPath)) {
+      return {
+        success: false,
+        error: 'Python MCP backend directory not found. Please check the installation.'
+      };
+    }
+
+    // Check if server is already running
+    try {
+      const healthCheck = await axios.get(`${config.url}/health`, { timeout: 2000 });
+      if (healthCheck.status === 200) {
+        return { success: true, message: 'Server is already running' };
+      }
+    } catch (e) {
+      // Server not running, continue with start
+    }
+
+    // Start the Python server
+    const pythonProcess = crossSpawn(
+      config.pythonPath,
+      ['agent_server.py'],
+      {
+        cwd: config.serverPath,
+        detached: true,
+        stdio: 'ignore'
+      }
+    );
+
+    pythonProcess.unref();
+
+    // Wait a bit and check if it started
+    await new Promise(resolve => setTimeout(resolve, 3000));
+
+    try {
+      const healthCheck = await axios.get(`${config.url}/health`, { timeout: 5000 });
+      if (healthCheck.status === 200) {
+        config.status = 'running';
+        savePythonMCPConfig(config);
+        return { success: true, message: 'Python MCP server started successfully' };
+      }
+    } catch (error) {
+      return {
+        success: false,
+        error: 'Server started but health check failed. It may take a few more seconds to initialize.'
+      };
+    }
+
+    return { success: false, error: 'Failed to start server' };
+  } catch (error) {
+    console.error('Error starting Python MCP server:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// RAG IPC Handlers
+ipcMain.handle('rag-index-files', async (_, { filePaths }) => {
+  try {
+    const config = loadPythonMCPConfig();
+    const response = await axios.post(`${config.url}/rag/index`, {
+      file_paths: filePaths
+    }, { timeout: 60000 });
+
+    return response.data;
+  } catch (error) {
+    console.error('RAG index error:', error.message);
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('rag-index-text', async (_, { text, metadata }) => {
+  try {
+    const config = loadPythonMCPConfig();
+    const response = await axios.post(`${config.url}/rag/index-text`, {
+      text,
+      metadata
+    }, { timeout: 30000 });
+
+    return response.data;
+  } catch (error) {
+    console.error('RAG index text error:', error.message);
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('rag-query', async (_, { question, context }) => {
+  try {
+    const config = loadPythonMCPConfig();
+    const response = await axios.post(`${config.url}/rag/query`, {
+      question,
+      context
+    }, { timeout: 60000 });
+
+    return response.data;
+  } catch (error) {
+    console.error('RAG query error:', error.message);
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('rag-clear', async () => {
+  try {
+    const config = loadPythonMCPConfig();
+    const response = await axios.delete(`${config.url}/rag/clear`, { timeout: 10000 });
+
+    return response.data;
+  } catch (error) {
+    console.error('RAG clear error:', error.message);
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('rag-stats', async () => {
+  try {
+    const config = loadPythonMCPConfig();
+    const response = await axios.get(`${config.url}/rag/stats`, { timeout: 5000 });
+
+    return response.data;
+  } catch (error) {
+    console.error('RAG stats error:', error.message);
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('chat-with-rag', async (_, { message, model, useRag }) => {
+  try {
+    const config = loadPythonMCPConfig();
+    const response = await axios.post(`${config.url}/chat`, {
+      message,
+      model: model || config.defaultModel,
+      use_rag: useRag || false
+    }, { timeout: 120000 });
+
+    return {
+      success: true,
+      response: response.data.response,
+      sources: response.data.sources,
+      model: response.data.model_used
+    };
+  } catch (error) {
+    console.error('Chat with RAG error:', error.message);
+    return { success: false, error: error.message };
+  }
+});
+
+// Python MCP Chat with Agentic Tool Calling
+ipcMain.handle('chat-with-python-mcp', async (_, { message, model }) => {
+  try {
+    const config = loadPythonMCPConfig();
+
+    // Check if server is running
+    try {
+      await axios.get(`${config.url}/health`, { timeout: 2000 });
+    } catch (error) {
+      if (panelWindow && !panelWindow.isDestroyed()) {
+        panelWindow.webContents.send('ollama-log', '❌ Python MCP backend is offline. Please start it first.');
+      }
+      return {
+        success: false,
+        error: 'Python MCP backend is not running. Start it from MCP Settings.'
+      };
+    }
+
+    // Send thinking message
+    if (panelWindow && !panelWindow.isDestroyed()) {
+      panelWindow.webContents.send('ollama-thought', {
+        type: 'thinking',
+        content: 'Processing with Python MCP Agent...'
+      });
+    }
+
+    // Get available tools and show them
+    try {
+      const toolsResponse = await axios.get(`${config.url}/tools`, { timeout: 5000 });
+      if (toolsResponse.data && toolsResponse.data.tools) {
+        const toolCount = toolsResponse.data.tools.length;
+        console.log(`Python MCP Agent has ${toolCount} tools available`);
+
+        if (panelWindow && !panelWindow.isDestroyed()) {
+          panelWindow.webContents.send('ollama-thought', {
+            type: 'tool_check',
+            content: `Python MCP Agent initialized with ${toolCount} tools`
+          });
+        }
+      }
+    } catch (toolError) {
+      console.warn('Could not fetch tools:', toolError.message);
+    }
+
+    // Send chat request to Python MCP backend
+    console.log(`Sending message to Python MCP: "${message.substring(0, 100)}..."`);
+
+    const response = await axios.post(
+      `${config.url}/chat`,
+      {
+        message: message,
+        model: model || config.defaultModel
+      },
+      {
+        timeout: 120000 // 2 minutes for complex agentic operations
+      }
+    );
+
+    if (!response.data || !response.data.response) {
+      throw new Error('Invalid response from Python MCP backend');
+    }
+
+    const aiResponse = response.data.response;
+    const modelUsed = response.data.model_used || model || config.defaultModel;
+
+    console.log(`Python MCP response (${aiResponse.length} chars):`, aiResponse.substring(0, 200));
+
+    // Send the complete response to UI (Python backend handles tool calling internally)
+    if (panelWindow && !panelWindow.isDestroyed()) {
+      panelWindow.webContents.send('ollama-thought', {
+        type: 'complete',
+        content: `Response generated using ${modelUsed}`
+      });
+
+      // Stream the response character by character for better UX
+      for (let i = 0; i < aiResponse.length; i += 10) {
+        const chunk = aiResponse.substring(i, i + 10);
+        panelWindow.webContents.send('ollama-chunk', chunk);
+        // Small delay to simulate streaming
+        await new Promise(resolve => setTimeout(resolve, 10));
+      }
+
+      panelWindow.webContents.send('ollama-done');
+    }
+
+    return {
+      success: true,
+      response: aiResponse,
+      model: modelUsed
+    };
+
+  } catch (error) {
+    console.error('Python MCP chat error:', error.message);
+
+    if (panelWindow && !panelWindow.isDestroyed()) {
+      panelWindow.webContents.send('ollama-log', `❌ Error: ${error.message}`);
+      panelWindow.webContents.send('ollama-done');
+    }
+
+    // Send error to UI as a message
+    if (panelWindow && !panelWindow.isDestroyed()) {
+      const errorMsg = `\n\n⚠️ Error communicating with Python MCP backend:\n${error.message}\n\nPlease ensure:\n1. Python MCP backend is running (check MCP Settings)\n2. Ollama is installed and running\n3. Model is pulled: ollama pull llama3.2:1b`;
+      panelWindow.webContents.send('ollama-chunk', errorMsg);
+      panelWindow.webContents.send('ollama-done');
+    }
+
+    return {
+      success: false,
+      error: error.message
+    };
+  }
 });
 
 // Export response to file

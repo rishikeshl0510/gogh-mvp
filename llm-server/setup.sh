@@ -25,8 +25,8 @@ ollama serve &
 sleep 3
 
 # Pull recommended model
-echo "📦 Pulling qwen2.5:0.5b model (this may take a few minutes)..."
-ollama pull qwen2.5:0.5b
+echo "📦 Pulling llama3.2:1b model (this may take a few minutes)..."
+ollama pull llama3.2:1b
 
 # Install npm dependencies
 echo "📦 Installing npm dependencies..."
@@ -39,7 +39,7 @@ if [ ! -f .env ]; then
 # LLM Server Configuration
 LLM_PORT=3001
 OLLAMA_URL=http://localhost:11434
-OLLAMA_MODEL=qwen2.5:0.5b
+OLLAMA_MODEL=llama3.2:1b
 EOF
     echo "✅ Created .env file"
 fi

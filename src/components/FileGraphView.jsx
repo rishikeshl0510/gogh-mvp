@@ -1,13 +1,19 @@
-import React, { useMemo, useCallback } from 'react';
-import ReactFlow, {
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
+import {
+  ReactFlow,
   Background,
   Controls,
   MiniMap,
-  useNodesState,
-  useEdgesState,
   MarkerType,
-} from 'reactflow';
-import 'reactflow/dist/style.css';
+  applyNodeChanges,
+  applyEdgeChanges,
+} from '@xyflow/react';
+import '@xyflow/react/dist/style.css';
+import CustomFileNode from './CustomFileNode';
+
+const nodeTypes = {
+  customFile: CustomFileNode,
+};
 
 export default function FileGraphView({ data, searchQuery }) {
   const appExtensions = ['.exe', '.lnk', '.app', '.dmg'];
@@ -41,65 +47,43 @@ export default function FileGraphView({ data, searchQuery }) {
     const nodes = [];
     const dirs = Object.keys(filesByDir);
 
-    // Create directory nodes
+    // Create directory nodes with enhanced custom type
     dirs.forEach((dir, index) => {
       const dirName = dir.split(/[\\\/]/).pop() || 'Root';
       nodes.push({
         id: `dir-${index}`,
-        type: 'default',
+        type: 'customFile',
         data: {
-          label: (
-            <div style={{ padding: '8px' }}>
-              <div style={{ fontWeight: '600', fontSize: '10px', marginBottom: '4px' }}>
-                📁 {dirName}
-              </div>
-              <div style={{ fontSize: '8px', color: 'rgba(255,255,255,0.6)' }}>
-                {filesByDir[dir].length} files
-              </div>
-            </div>
-          )
+          label: dirName,
+          fileCount: filesByDir[dir].length,
+          isDirectory: true,
+          path: dir
         },
         position: {
-          x: (index % 3) * 250,
-          y: Math.floor(index / 3) * 150
+          x: (index % 3) * 280,
+          y: Math.floor(index / 3) * 220
         },
-        style: {
-          background: 'rgba(100, 100, 255, 0.1)',
-          border: '1px solid rgba(100, 100, 255, 0.3)',
-          borderRadius: '8px',
-          padding: 0,
-          width: 180,
-        },
+        draggable: true,
       });
     });
 
-    // Create file nodes
+    // Create file nodes with enhanced custom type
     let fileIndex = 0;
     dirs.forEach((dir, dirIndex) => {
       filesByDir[dir].forEach((file, fIndex) => {
-        const ext = file.name.substring(file.name.lastIndexOf('.'));
         nodes.push({
           id: `file-${file.id}`,
-          type: 'default',
+          type: 'customFile',
           data: {
-            label: (
-              <div style={{ fontSize: '9px', padding: '4px 8px' }}>
-                {file.name}
-              </div>
-            )
+            label: file.name,
+            path: file.path,
+            isDirectory: false
           },
           position: {
-            x: (dirIndex % 3) * 250 + (fIndex * 60) - 40,
-            y: Math.floor(dirIndex / 3) * 150 + 80
+            x: (dirIndex % 3) * 280 + (fIndex * 75) - 60,
+            y: Math.floor(dirIndex / 3) * 220 + 130
           },
-          style: {
-            background: 'rgba(255, 255, 255, 0.05)',
-            border: '1px solid rgba(255, 255, 255, 0.2)',
-            borderRadius: '4px',
-            padding: 0,
-            width: 120,
-            fontSize: '9px',
-          },
+          draggable: true,
         });
         fileIndex++;
       });
@@ -138,8 +122,24 @@ export default function FileGraphView({ data, searchQuery }) {
     return edges;
   }, [filesByDir]);
 
-  const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
-  const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
+  const [nodes, setNodes] = useState(initialNodes);
+  const [edges, setEdges] = useState(initialEdges);
+
+  // Update nodes and edges when initialNodes/initialEdges change
+  useEffect(() => {
+    setNodes(initialNodes);
+    setEdges(initialEdges);
+  }, [initialNodes, initialEdges]);
+
+  const onNodesChange = useCallback(
+    (changes) => setNodes((nds) => applyNodeChanges(changes, nds)),
+    []
+  );
+
+  const onEdgesChange = useCallback(
+    (changes) => setEdges((eds) => applyEdgeChanges(changes, eds)),
+    []
+  );
 
   const onNodeClick = useCallback((event, node) => {
     // Find file and open it
@@ -166,32 +166,59 @@ export default function FileGraphView({ data, searchQuery }) {
   }
 
   return (
-    <div style={{ width: '100%', height: '500px', background: 'rgba(0, 0, 0, 0.2)', borderRadius: '8px' }}>
+    <div style={{
+      width: '100%',
+      height: '100%',
+      minHeight: '400px',
+      background: 'rgba(0, 0, 0, 0.2)',
+      borderRadius: '8px',
+      position: 'relative',
+      overflow: 'hidden'
+    }}>
       <ReactFlow
         nodes={nodes}
         edges={edges}
+        nodeTypes={nodeTypes}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onNodeClick={onNodeClick}
         fitView
-        attributionPosition="bottom-left"
-        style={{ background: 'transparent' }}
+        fitViewOptions={{ padding: 0.2, maxZoom: 1.5 }}
+        minZoom={0.1}
+        maxZoom={4}
+        defaultEdgeOptions={{
+          style: { strokeWidth: 2, stroke: 'rgba(100, 150, 255, 0.6)' },
+          animated: true
+        }}
+        proOptions={{ hideAttribution: true }}
       >
-        <Background color="rgba(255, 255, 255, 0.1)" gap={16} />
+        <Background
+          color="rgba(255, 255, 255, 0.15)"
+          gap={20}
+          size={1}
+          variant="dots"
+        />
         <Controls
+          showZoom={true}
+          showFitView={true}
+          showInteractive={false}
           style={{
             button: {
-              background: 'rgba(50, 50, 50, 0.8)',
-              border: '1px solid rgba(255, 255, 255, 0.2)',
-              color: 'white'
+              backgroundColor: 'rgba(50, 50, 60, 0.9)',
+              color: 'white',
+              borderColor: 'rgba(255, 255, 255, 0.2)'
             }
           }}
         />
         <MiniMap
-          nodeColor={() => 'rgba(100, 150, 255, 0.3)'}
+          nodeColor={(node) => {
+            if (node.id.startsWith('dir-')) return 'rgba(100, 100, 255, 0.6)';
+            return 'rgba(150, 200, 255, 0.5)';
+          }}
+          maskColor="rgba(0, 0, 0, 0.7)"
           style={{
-            background: 'rgba(0, 0, 0, 0.5)',
-            border: '1px solid rgba(255, 255, 255, 0.2)',
+            background: 'rgba(0, 0, 0, 0.6)',
+            border: '1px solid rgba(255, 255, 255, 0.3)',
           }}
         />
       </ReactFlow>
